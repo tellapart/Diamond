@@ -40,7 +40,10 @@ def get_hostname(config, method=None):
         return config['hostname']
 
     if method in get_hostname.cached_results:
-        return get_hostname.cached_results[method]
+        hostname, last_cached = get_hostname.cached_results[method]
+        interval = config.get('hostname_cache_expiration_interval')
+        if not interval or (time.time() - last_cached) < int(interval):
+            return hostname
 
     if method == 'shell':
         if 'hostname' not in config:
@@ -55,85 +58,54 @@ def get_hostname(config, method=None):
             if proc.returncode != 0:
                 raise subprocess.CalledProcessError(proc.returncode,
                                                     config['hostname'])
-            get_hostname.cached_results[method] = hostname
-            return hostname
 
-    if method == 'smart':
+    elif method == 'smart':
         hostname = get_hostname(config, 'fqdn_short')
-        if hostname != 'localhost':
-            get_hostname.cached_results[method] = hostname
-            return hostname
-        hostname = get_hostname(config, 'hostname_short')
-        get_hostname.cached_results[method] = hostname
-        return hostname
+        if hostname == 'localhost':
+            hostname = get_hostname(config, 'hostname_short')
 
-    if method == 'fqdn_short':
+    elif method == 'fqdn_short':
         hostname = socket.getfqdn().split('.')[0]
-        get_hostname.cached_results[method] = hostname
-        if hostname == '':
-            raise DiamondException('Hostname is empty?!')
-        return hostname
 
-    if method == 'fqdn':
+    elif method == 'fqdn':
         hostname = socket.getfqdn().replace('.', '_')
-        get_hostname.cached_results[method] = hostname
-        if hostname == '':
-            raise DiamondException('Hostname is empty?!')
-        return hostname
 
-    if method == 'fqdn_rev':
+    elif method == 'fqdn_rev':
         hostname = socket.getfqdn().split('.')
         hostname.reverse()
         hostname = '.'.join(hostname)
-        get_hostname.cached_results[method] = hostname
-        if hostname == '':
-            raise DiamondException('Hostname is empty?!')
-        return hostname
 
-    if method == 'uname_short':
+    elif method == 'uname_short':
         hostname = os.uname()[1].split('.')[0]
-        get_hostname.cached_results[method] = hostname
-        if hostname == '':
-            raise DiamondException('Hostname is empty?!')
-        return hostname
 
-    if method == 'uname_rev':
+    elif method == 'uname_rev':
         hostname = os.uname()[1].split('.')
         hostname.reverse()
         hostname = '.'.join(hostname)
-        get_hostname.cached_results[method] = hostname
-        if hostname == '':
-            raise DiamondException('Hostname is empty?!')
-        return hostname
 
-    if method == 'hostname':
+    elif method == 'hostname':
         hostname = socket.gethostname()
-        get_hostname.cached_results[method] = hostname
-        if hostname == '':
-            raise DiamondException('Hostname is empty?!')
-        return hostname
 
-    if method == 'hostname_short':
+    elif method == 'hostname_short':
         hostname = socket.gethostname().split('.')[0]
-        get_hostname.cached_results[method] = hostname
-        if hostname == '':
-            raise DiamondException('Hostname is empty?!')
-        return hostname
 
-    if method == 'hostname_rev':
+    elif method == 'hostname_rev':
         hostname = socket.gethostname().split('.')
         hostname.reverse()
         hostname = '.'.join(hostname)
-        get_hostname.cached_results[method] = hostname
-        if hostname == '':
-            raise DiamondException('Hostname is empty?!')
-        return hostname
 
-    if method == 'none':
-        get_hostname.cached_results[method] = None
-        return None
+    elif method == 'none':
+        hostname = None
 
-    raise NotImplementedError(config['hostname_method'])
+    else:
+        raise NotImplementedError(config['hostname_method'])
+
+    if hostname == '':
+        raise DiamondException('Hostname is empty?!')
+
+    current_time = time.time()
+    get_hostname.cached_results[method] = (hostname, current_time)
+    return hostname
 
 get_hostname.cached_results = {}
 
