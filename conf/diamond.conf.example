@@ -159,6 +159,11 @@ batch = 100
 
 # hostname_method = smart
 
+# If you need to expire the cached hostname, uncomment the line below and choose
+# an appropriate interval:
+
+# hostname_cache_expiration_interval = 300
+
 # Path Prefix and Suffix
 # you can use one or both to craft the path where you want to put metrics
 # such as: %(path_prefix)s.$(hostname)s.$(path_suffix)s.$(metric)s
