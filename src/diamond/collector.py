@@ -293,7 +293,7 @@ class Collector(object):
                                           int(self.config['splay']),
                                           int(self.config['interval']))}
 
-    def get_metric_path(self, name, instance=None):
+    def get_metric_path(self, name, instance=None, source=None):
         """
         Get metric path.
         Instance indicates that this is a metric for a
@@ -325,7 +325,7 @@ class Collector(object):
         else:
             suffix = None
 
-        hostname = get_hostname(self.config)
+        hostname = source or get_hostname(self.config)
         if hostname is not None:
             if prefix:
                 prefix = ".".join((prefix, hostname))
@@ -351,7 +351,7 @@ class Collector(object):
         raise NotImplementedError()
 
     def publish(self, name, value, raw_value=None, precision=0,
-                metric_type='GAUGE', instance=None):
+                metric_type='GAUGE', instance=None, source=None):
         """
         Publish a metric with the given name
         """
@@ -364,7 +364,7 @@ class Collector(object):
                 return
 
         # Get metric Path
-        path = self.get_metric_path(name, instance=instance)
+        path = self.get_metric_path(name, instance=instance, source=source)
 
         # Get metric TTL
         ttl = float(self.config['interval']) * float(
@@ -372,8 +372,9 @@ class Collector(object):
 
         # Create Metric
         try:
+            host = source or self.get_hostname()
             metric = Metric(path, value, raw_value=raw_value, timestamp=None,
-                            precision=precision, host=self.get_hostname(),
+                            precision=precision, host=host,
                             metric_type=metric_type, ttl=ttl)
         except DiamondException:
             self.log.error(('Error when creating new Metric: path=%r, '

@@ -1,0 +1,79 @@
+{
+    "responseCode": "OK",
+    "serverInfo": {
+        "clusterName": "general",
+        "thriftAPIVersion": 3,
+        "statsUrlPrefix": ""
+    },
+    "DEPRECATEDversion": {
+        "major": 3
+    },
+    "result": {
+        "jobSummaryResult": {
+            "summaries": [
+                {
+                    "job": {
+                        "owner": {
+                            "role": "ubuntu",
+                            "user": "ubuntu"
+                        },
+                        "instanceCount": 6,
+                        "key": {
+                            "environment": "prod",
+                            "role": "test_role",
+                            "name": "my_job"
+                        },
+                        "taskConfig": {
+                            "isService": true,
+                            "priority": 0,
+                            "taskLinks": {
+                                "http": "http://%host%:%port:http%"
+                            },
+                            "executorConfig": {
+                                "data": "{}",
+                                "name": "AuroraExecutor"
+                            },
+                            "metadata": [],
+                            "requestedPorts": [
+                                "http"
+                            ],
+                            "jobName": "my_job",
+                            "environment": "prod",
+                            "ramMb": 6272,
+                            "job": {
+                                "environment": "prod",
+                                "role": "test_role",
+                                "name": "my_job"
+                            },
+                            "production": false,
+                            "diskMb": 1152,
+                            "owner": {
+                                "role": "ubuntu",
+                                "user": "ubuntu"
+                            },
+                            "maxTaskFailures": 1,
+                            "numCpus": 8.5,
+                            "constraints": [
+                                {
+                                    "name": "host",
+                                    "constraint": {
+                                        "limit": {
+                                            "limit": 1
+                                        }
+                                    }
+                                }
+                            ]
+                        }
+                    },
+                    "nextCronRunMs": 0,
+                    "stats": {
+                        "pendingTaskCount": 1,
+                        "activeTaskCount": 1,
+                        "failedTaskCount": 1,
+                        "finishedTaskCount": 4
+                    }
+                }
+            ]
+        }
+    }
+}
