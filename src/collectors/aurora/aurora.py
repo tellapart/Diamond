@@ -63,6 +63,15 @@ class SlidingMetric(Metric):
             self.name + '_timeouts': COUNTER,
         }
 
+class RedirectError(Exception):
+    pass
+
+class NoRedirectHandler(urllib2.HTTPRedirectHandler):
+    """Custom handler that fast-fails on redirect.
+    """
+    def http_error_302(self, req, fp, code, msg, headers):
+        raise RedirectError()
+
 class AuroraCollector(diamond.collector.Collector):
 
     # If this metric has a non-zero value, the instance is the active scheduler.
@@ -393,8 +402,8 @@ class AuroraCollector(diamond.collector.Collector):
         self.log.debug('Requesting Aurora data from: %s' % url)
         req = urllib2.Request(url, headers=headers,
                               data=None if verb == 'GET' else '')
-
-        handle = urllib2.urlopen(req)
+        opener = urllib2.build_opener(NoRedirectHandler)
+        handle = opener.open(req)
         return json.loads(handle.read())
 
     def _publish_job_metrics(self, job_summary, cluster):
@@ -456,8 +465,15 @@ class AuroraCollector(diamond.collector.Collector):
         """
         for cluster, host, port in self._get_hosts():
             try:
-                job_stats = self._fetch_data(
-                    host, port, 'apibeta/getJobSummary', verb='POST')
+                try:
+                    job_stats = self._fetch_data(
+                        host, port, 'apibeta/getJobSummary', verb='POST')
+                except RedirectError:
+                    self.log.warn(
+                        'GetJobSummmary returned a 302, which indicates an '
+                        'inactive scheduler. Skipping collection.')
+                    return
+
                 metrics = self._fetch_data(host, port, 'vars.json')
 
                 cluster = cluster or job_stats['serverInfo']['clusterName']

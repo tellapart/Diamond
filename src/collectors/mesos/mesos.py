@@ -13,7 +13,7 @@ MesosCollector.conf
 
 ```
     enabled = True
-    hosts = master@localhost:5050, slave@localhost:5051, etc
+    hosts = localhost:5050, localhost:5051, etc
 ```
 
 Metrics are collected as:
@@ -174,7 +174,7 @@ class MesosCollector(diamond.collector.Collector):
         """
         config = super(MesosCollector, self).get_default_config()
         config.update({
-            'hosts': ['master@localhost:8081'],
+            'hosts': ['localhost:5050'],
             'path': 'mesos',
             })
         return config
@@ -187,7 +187,7 @@ class MesosCollector(diamond.collector.Collector):
 
     def _get_hosts(self):
         """
-        Returns a generator of (cluster, hostname, port) tuples.
+        Returns a generator of (hostname, port) tuples.
         """
         hosts = self.config.get('hosts')
 
@@ -196,14 +196,11 @@ class MesosCollector(diamond.collector.Collector):
 
         for host in hosts:
             matches = re.search('((.+)\@)?([^:]+)(:(\d+))?', host)
-            cluster = matches.group(2)
+            #cluster = matches.group(2)
             hostname = matches.group(3)
             port = matches.group(5)
 
-            if cluster is None:
-                cluster = 'general'
-
-            yield cluster, hostname, port
+            yield hostname, port
 
     def _fetch_data(self, host, port, url):
         """
@@ -242,8 +239,11 @@ class MesosCollector(diamond.collector.Collector):
         """
         Runs collection processes against all available endpoints.
         """
-        for cluster, host, port in self._get_hosts():
+        for host, port in self._get_hosts():
             try:
+                # TODO(george): If we want to publish stats using the actual
+                # mesos cluster name, we can cut over to use state.json.
+                # Unfortunately, it only returns the cluster name on the master.
                 metrics = self._fetch_data(host, port, 'metrics/snapshot')
 
                 # If this is a master but not the elected master, don't publish.
@@ -258,5 +258,4 @@ class MesosCollector(diamond.collector.Collector):
 
             except Exception:
                 self.log.exception(
-                    "Error retrieving Mesos metrics for (%s, %s, %s).",
-                    cluster, host, port)
+                    "Error retrieving Mesos metrics for (%s, %s).", host, port)
