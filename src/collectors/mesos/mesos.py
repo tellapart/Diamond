@@ -234,37 +234,6 @@ class MesosCollector(diamond.collector.Collector):
         name = self._format_identifier(raw_name)
         self.publish(name, value, metric_type=metric_type)
 
-    def collect(self):
-        """
-        Runs collection processes against all available endpoints.
-        """
-        for host, port in self._get_hosts():
-            try:
-                # TODO(george): If we want to publish stats using the actual
-                # mesos cluster name, we can cut over to use state.json.
-                # Unfortunately, it only returns the cluster name on the master.
-                metrics = self._fetch_data(host, port, 'metrics/snapshot')
-
-                # If this is a master but not the elected master, don't publish.
-                is_master = metrics.get(self.ELECTED_MASTER_METRIC)
-                if is_master is not None and not is_master:
-                    self.log.warn('Non-elected master. Skipping collection.')
-                    return
-
-                # Publish explicitly exposed metrics.
-                for raw_name, raw_value in metrics.iteritems():
-                    self._publish_metrics(raw_name, raw_value)
-
-                if not is_master:
-                    state = self._fetch_data(host, port, 'state.json')
-                    cluster = state['attributes'].get('group') or 'unknown'
-
-                    # Publish task level metrics
-                    self._publish_task_metrics(cluster, host, port)
-            except Exception:
-                self.log.exception(
-                    "Error retrieving Mesos metrics for (%s, %s).", host, port)
-
     def _publish_task_metrics(self, cluster, host, port):
         slave_data = self._fetch_data(host, port, 'monitor/statistics.json')
         for executor in slave_data:
@@ -274,7 +243,7 @@ class MesosCollector(diamond.collector.Collector):
                 continue
             else:
                 job_name = executor['source']
-                instance_id = job_name[job_name.rindex('.') + 1:]
+                instance_id = job_name[job_name.rindex('.'):]
                 base_job_name = job_name[0:job_name.rindex('.')]
                 source = cluster + '.' + base_job_name
 
@@ -291,18 +260,52 @@ class MesosCollector(diamond.collector.Collector):
                                                         'sys_cpu')
             total_cpu = user_cpu + sys_cpu
             mem_used = stats['mem_rss_bytes'] / (1024 * 1024)
-            self._public_metric_set(user_cpu, sys_cpu, total_cpu, mem_used, instance_id, source)
+            self._publish_metric_set(user_cpu, sys_cpu, total_cpu, mem_used,
+                                     instance_id, source)
 
-    def _public_metric_set(self, user_cpu, sys_cpu, total_cpu, mem_used, instance_id, source):
-        instance_id = '.' + instance_id or '.total'
-        self.publish('job_resources_used_user_cpu', user_cpu, source=source + instance_id)
-        self.publish('job_resources_used_sys_cpu', sys_cpu, source=source + instance_id)
-        self.publish('job_resources_used_cpu', total_cpu, source=source + instance_id)
-        self.publish('job_resources_used_mem_reserved', mem_used, source=source + instance_id)
+    def _publish_metric_set(self, user_cpu, sys_cpu, total_cpu, mem_used,
+                            instance_id, source):
+        full_source = source + instance_id
+        self.publish('job_resources_used_user_cpu', user_cpu, source=full_source)
+        self.publish('job_resources_used_sys_cpu', sys_cpu, source=full_source)
+        self.publish('job_resources_used_cpu', total_cpu, source=full_source)
+        self.publish('job_resources_used_mem_reserved', mem_used,
+                     source=full_source)
 
     def _calculate_derivative_metric(self, source, instance_id, stats,
                                      stat_name, metric_name):
-        metric = metric_name + '.' + source + '.' + instance_id
+        metric = metric_name + '.' + source + instance_id
         return self.derivative(metric,
                                stats[stat_name],
                                timestamp=float(stats['timestamp']))
+
+    def collect(self):
+        """
+        Runs collection processes against all available endpoints.
+        """
+        for host, port in self._get_hosts():
+            try:
+                # TODO(george): If we want to publish stats using the actual
+                # mesos cluster name, we can cut over to use state.json.
+                # Unfortunately, it only returns the cluster name on the master.
+                metrics = self._fetch_data(host, port, 'metrics/snapshot')
+
+                # If this is a master but not the elected master, don't publish.
+                is_primary_master = metrics.get(self.ELECTED_MASTER_METRIC)
+                if is_primary_master is not None and not is_primary_master:
+                    self.log.warn('Non-elected master. Skipping collection.')
+                    return
+
+                # Publish explicitly exposed metrics.
+                for raw_name, raw_value in metrics.iteritems():
+                    self._publish_metrics(raw_name, raw_value)
+
+                if is_primary_master is None:
+                    state = self._fetch_data(host, port, 'state.json')
+                    cluster = state['attributes'].get('group') or 'unknown'
+
+                    # Publish task level metrics
+                    self._publish_task_metrics(cluster, host, port)
+            except Exception:
+                self.log.exception(
+                    "Error retrieving Mesos metrics for (%s, %s).", host, port)
