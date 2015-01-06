@@ -22,6 +22,7 @@ Metrics are collected as:
     Characters not in [A-Za-z0-9:-_] in metric names are replaced by _
 """
 
+from collections import defaultdict
 import itertools
 import json
 import re
@@ -241,6 +242,9 @@ class MesosCollector(diamond.collector.Collector):
         """
         for host, port in self._get_hosts():
             try:
+                state = self._fetch_data(host, port, 'state.json')
+                cluster = state['attributes'].get('group') or 'unknown'
+
                 # TODO(george): If we want to publish stats using the actual
                 # mesos cluster name, we can cut over to use state.json.
                 # Unfortunately, it only returns the cluster name on the master.
@@ -256,6 +260,50 @@ class MesosCollector(diamond.collector.Collector):
                 for raw_name, raw_value in metrics.iteritems():
                     self._publish_metrics(raw_name, raw_value)
 
+                # Publish task level metrics
+                self._publish_task_metrics(cluster, host, port)
             except Exception:
                 self.log.exception(
                     "Error retrieving Mesos metrics for (%s, %s).", host, port)
+
+    def _publish_task_metrics(self, cluster, host, port):
+        slave_data = self._fetch_data(host, port, 'monitor/statistics.json')
+        for executor in slave_data:
+            name = executor['executor_name']
+            stats = executor['statistics']
+            if name == 'aurora.gc':
+                continue
+            else:
+                job_name = executor['source']
+                instance_id = job_name[job_name.rindex('.') + 1:]
+                base_job_name = job_name[0:job_name.rindex('.')]
+                source = cluster + '.' + base_job_name
+
+            # Calculate CPU delta
+            user_cpu = self._calculate_derivative_metric(source,
+                                                         instance_id,
+                                                         stats,
+                                                         'cpus_user_time_secs',
+                                                         'user_cpu')
+            sys_cpu = self._calculate_derivative_metric(source,
+                                                        instance_id,
+                                                        stats,
+                                                        'cpus_system_time_secs',
+                                                        'sys_cpu')
+            total_cpu = user_cpu + sys_cpu
+            mem_used = stats['mem_rss_bytes'] / (1024 * 1024)
+            self._public_metric_set(user_cpu, sys_cpu, total_cpu, mem_used, instance_id, source)
+
+    def _public_metric_set(self, user_cpu, sys_cpu, total_cpu, mem_used, instance_id, source):
+        instance_id = '.' + instance_id or '.total'
+        self.publish('job_resources_used_user_cpu', user_cpu, source=source + instance_id)
+        self.publish('job_resources_used_sys_cpu', sys_cpu, source=source + instance_id)
+        self.publish('job_resources_used_cpu', total_cpu, source=source + instance_id)
+        self.publish('job_resources_used_mem_reserved', mem_used, source=source + instance_id)
+
+    def _calculate_derivative_metric(self, source, instance_id, stats,
+                                     stat_name, metric_name):
+        metric = metric_name + '.' + source + '.' + instance_id
+        return self.derivative(metric,
+                               stats[stat_name],
+                               timestamp=float(stats['timestamp']))
