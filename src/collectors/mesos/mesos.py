@@ -22,7 +22,6 @@ Metrics are collected as:
     Characters not in [A-Za-z0-9:-_] in metric names are replaced by _
 """
 
-import itertools
 import json
 import re
 import urllib2
@@ -235,6 +234,51 @@ class MesosCollector(diamond.collector.Collector):
         name = self._format_identifier(raw_name)
         self.publish(name, value, metric_type=metric_type)
 
+    def _publish_task_metrics(self, cluster, host, port):
+        slave_data = self._fetch_data(host, port, 'monitor/statistics.json')
+        for executor in slave_data:
+            name = executor['executor_name']
+            stats = executor['statistics']
+            if name == 'aurora.gc':
+                continue
+            else:
+                job_name = executor['source']
+                instance_id = job_name[job_name.rindex('.'):]
+                base_job_name = job_name[0:job_name.rindex('.')]
+                source = cluster + '.' + base_job_name
+
+            # Calculate CPU delta
+            user_cpu = self._calculate_derivative_metric(source,
+                                                         instance_id,
+                                                         stats,
+                                                         'cpus_user_time_secs',
+                                                         'user_cpu')
+            sys_cpu = self._calculate_derivative_metric(source,
+                                                        instance_id,
+                                                        stats,
+                                                        'cpus_system_time_secs',
+                                                        'sys_cpu')
+            total_cpu = user_cpu + sys_cpu
+            mem_used = stats['mem_rss_bytes'] / (1024 * 1024)
+            self._publish_metric_set(user_cpu, sys_cpu, total_cpu, mem_used,
+                                     instance_id, source)
+
+    def _publish_metric_set(self, user_cpu, sys_cpu, total_cpu, mem_used,
+                            instance_id, source):
+        full_source = source + instance_id
+        self.publish('job_resources_used_user_cpu', user_cpu, source=full_source)
+        self.publish('job_resources_used_sys_cpu', sys_cpu, source=full_source)
+        self.publish('job_resources_used_cpu', total_cpu, source=full_source)
+        self.publish('job_resources_used_mem_reserved', mem_used,
+                     source=full_source)
+
+    def _calculate_derivative_metric(self, source, instance_id, stats,
+                                     stat_name, metric_name):
+        metric = metric_name + '.' + source + instance_id
+        return self.derivative(metric,
+                               stats[stat_name],
+                               timestamp=float(stats['timestamp']))
+
     def collect(self):
         """
         Runs collection processes against all available endpoints.
@@ -247,8 +291,8 @@ class MesosCollector(diamond.collector.Collector):
                 metrics = self._fetch_data(host, port, 'metrics/snapshot')
 
                 # If this is a master but not the elected master, don't publish.
-                is_master = metrics.get(self.ELECTED_MASTER_METRIC)
-                if is_master is not None and not is_master:
+                is_primary_master = metrics.get(self.ELECTED_MASTER_METRIC)
+                if is_primary_master is not None and not is_primary_master:
                     self.log.warn('Non-elected master. Skipping collection.')
                     return
 
@@ -256,6 +300,12 @@ class MesosCollector(diamond.collector.Collector):
                 for raw_name, raw_value in metrics.iteritems():
                     self._publish_metrics(raw_name, raw_value)
 
+                if is_primary_master is None:
+                    state = self._fetch_data(host, port, 'state.json')
+                    cluster = state['attributes'].get('group') or 'unknown'
+
+                    # Publish task level metrics
+                    self._publish_task_metrics(cluster, host, port)
             except Exception:
                 self.log.exception(
                     "Error retrieving Mesos metrics for (%s, %s).", host, port)

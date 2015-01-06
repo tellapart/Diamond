@@ -24,6 +24,12 @@ from mesos import MesosCollector
 
 
 class TestMesosCollector(CollectorTestCase):
+    STATE = {
+        'attributes': {
+            'group': 'test'
+        }
+    }
+
     def setUp(self):
         config = get_collector_config('MesosCollector', {
             'hosts': 'localhost:8081',
@@ -71,8 +77,11 @@ class TestMesosCollector(CollectorTestCase):
 
     @patch.object(Collector, 'publish')
     def test_slave_metrics(self, publish_mock):
-        mm = self.getFixture('slave_metrics')
-        patch_urlopen = patch('urllib2.urlopen', Mock(return_value=mm))
+        fixtures = [self.getFixture('slave_metrics'),
+                    StringIO(json.dumps(self.STATE)),
+                    StringIO("[]")]
+        patch_urlopen = patch('urllib2.urlopen',
+                              Mock(side_effect=lambda *args: fixtures.pop(0)))
 
         patch_urlopen.start()
         self.collector.collect()
@@ -84,6 +93,33 @@ class TestMesosCollector(CollectorTestCase):
         }
 
         self.assertPublishedMany(publish_mock, published_metrics)
+
+    @patch.object(Collector, 'publish')
+    def test_task_metrics(self, publish_mock):
+        fixtures = [StringIO("{}"),
+                    StringIO(json.dumps(self.STATE)),
+                    self.getFixture('slave_perf_1'),
+
+                    StringIO("{}"),
+                    StringIO(json.dumps(self.STATE)),
+                    self.getFixture('slave_perf_2')]
+        patch_urlopen = patch('urllib2.urlopen',
+                              Mock(side_effect=lambda *args: fixtures.pop(0)))
+
+        patch_urlopen.start()
+        self.collector.collect()
+        self.collector.collect()
+        patch_urlopen.stop()
+
+        expected_metrics = {
+            'job_resources_used_user_cpu': 2.7,
+            'job_resources_used_sys_cpu': 1,
+            'job_resources_used_mem_reserved': 79015936 / (1024 * 1024)
+        }
+        # reverse it so the calls that get checked are the last calls
+        publish_mock.call_args_list.reverse()
+        self.assertPublishedMany(publish_mock, expected_metrics, 2)
+
 ################################################################################
 if __name__ == "__main__":
     unittest.main()

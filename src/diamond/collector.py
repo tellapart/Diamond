@@ -409,7 +409,7 @@ class Collector(object):
                             instance=instance)
 
     def derivative(self, name, new, max_value=0,
-                   time_delta=True, interval=None,
+                   time_delta=True, interval=None, timestamp=None,
                    allow_negative=False, instance=None):
         """
         Calculate the derivative of the metric.
@@ -418,7 +418,7 @@ class Collector(object):
         path = self.get_metric_path(name, instance=instance)
 
         if path in self.last_values:
-            old = self.last_values[path]
+            old, old_timestamp = self.last_values[path]
             # Check for rollover
             if new < old:
                 old = old - max_value
@@ -426,7 +426,9 @@ class Collector(object):
             derivative_x = new - old
 
             # If we pass in a interval, use it rather then the configured one
-            if interval is None:
+            if timestamp is not None:
+                interval = timestamp - old_timestamp
+            elif interval is None:
                 interval = int(self.config['interval'])
 
             # Get Change in Y (time)
@@ -442,7 +444,7 @@ class Collector(object):
             result = 0
 
         # Store Old Value
-        self.last_values[path] = new
+        self.last_values[path] = (new, timestamp)
 
         # Return result
         return result
