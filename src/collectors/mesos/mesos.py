@@ -22,8 +22,6 @@ Metrics are collected as:
     Characters not in [A-Za-z0-9:-_] in metric names are replaced by _
 """
 
-from collections import defaultdict
-import itertools
 import json
 import re
 import urllib2
@@ -242,9 +240,6 @@ class MesosCollector(diamond.collector.Collector):
         """
         for host, port in self._get_hosts():
             try:
-                state = self._fetch_data(host, port, 'state.json')
-                cluster = state['attributes'].get('group') or 'unknown'
-
                 # TODO(george): If we want to publish stats using the actual
                 # mesos cluster name, we can cut over to use state.json.
                 # Unfortunately, it only returns the cluster name on the master.
@@ -260,8 +255,12 @@ class MesosCollector(diamond.collector.Collector):
                 for raw_name, raw_value in metrics.iteritems():
                     self._publish_metrics(raw_name, raw_value)
 
-                # Publish task level metrics
-                self._publish_task_metrics(cluster, host, port)
+                if not is_master:
+                    state = self._fetch_data(host, port, 'state.json')
+                    cluster = state['attributes'].get('group') or 'unknown'
+
+                    # Publish task level metrics
+                    self._publish_task_metrics(cluster, host, port)
             except Exception:
                 self.log.exception(
                     "Error retrieving Mesos metrics for (%s, %s).", host, port)
