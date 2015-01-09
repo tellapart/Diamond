@@ -86,6 +86,8 @@ class LibratoHandler(Handler):
             'queue_max_size': '',
             'queue_max_interval': '',
             'include_filters': '',
+            'include_period': '',
+            'enable_ssa': ''
         })
 
         return config
@@ -102,28 +104,54 @@ class LibratoHandler(Handler):
             'queue_max_size': 300,
             'queue_max_interval': 60,
             'include_filters': ['^.*'],
+            'include_period': False,
+            'enable_ssa': False
         })
 
         return config
 
-    def process(self, metric):
+    def _get_path(self, metric):
         """
-        Process a metric by sending it to Librato
+        Generate the path that should be logged for the metric.
         """
         path = metric.getCollectorPath()
         path += '.'
         path += metric.getMetricPath()
 
+        return path
+
+    def _get_queue_item(self, metric):
+        """
+        Generate an item to add to the queue.
+        """
+        path = self._get_path(metric)
+        if metric.metric_type == 'GAUGE':
+            m_type = 'gauge'
+        else:
+            m_type = 'counter'
+        queue_args = {
+            'name': path,
+            'value': float(metric.value),
+            'type': m_type,
+            'source': metric.host,
+            'measure_time': metric.timestamp
+        }
+        if self.config['include_period'] and metric.interval:
+            queue_args['period'] = int(metric.interval)
+        if self.config['enable_ssa']:
+            queue_args['attributes'] = {'aggregate': True}
+
+        return queue_args
+
+    def process(self, metric):
+        """
+        Process a metric by sending it to Librato
+        """
+        path = self._get_path(metric)
+
         if self.include_reg.match(path):
-            if metric.metric_type == 'GAUGE':
-                m_type = 'gauge'
-            else:
-                m_type = 'counter'
-            self.queue.add(path,                # name
-                           float(metric.value),  # value
-                           type=m_type,
-                           source=metric.host,
-                           measure_time=metric.timestamp)
+            item = self._get_queue_item(metric)
+            self.queue.add(**item)
             self.current_n_measurements += 1
         else:
             self.log.debug("LibratoHandler: Skip %s, no include_filters match",
