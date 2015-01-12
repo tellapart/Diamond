@@ -370,12 +370,14 @@ class Collector(object):
         ttl = float(self.config['interval']) * float(
             self.config['ttl_multiplier'])
 
+        interval = int(self.config['interval'])
+
         # Create Metric
         try:
             host = source or self.get_hostname()
             metric = Metric(path, value, raw_value=raw_value, timestamp=None,
                             precision=precision, host=host,
-                            metric_type=metric_type, ttl=ttl)
+                            metric_type=metric_type, ttl=ttl, interval=interval)
         except DiamondException:
             self.log.error(('Error when creating new Metric: path=%r, '
                             'value=%r'), path, value)
