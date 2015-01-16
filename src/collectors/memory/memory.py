@@ -39,6 +39,7 @@ _KEY_MAPPING = [
     'VmallocUsed',
     'VmallocChunk',
     'Committed_AS',
+    'MemPercentUsed'
 ]
 
 
@@ -68,6 +69,23 @@ class MemoryCollector(diamond.collector.Collector):
         })
         return config
 
+    def _calculate_percent_used(self, parts):
+        """
+        Calculate and return the current % of memory used.
+        """
+        try:
+            buffers, _ = parts['Buffers']
+            cached, _ = parts['Cached']
+            memfree, _ = parts['MemFree']
+
+            free = buffers + cached + memfree
+            total = float(parts['MemTotal'][0])
+
+            used = round(((total - free) / total) * 100, 2)
+            return used, None
+        except (KeyError, ZeroDivisionError):
+            return 0, None
+
     def collect(self):
         """
         Collect memory stats
@@ -77,27 +95,35 @@ class MemoryCollector(diamond.collector.Collector):
             data = file.read()
             file.close()
 
+            parts = dict()
             for line in data.splitlines():
                 try:
                     name, value, units = line.split()
                     name = name.rstrip(':')
                     value = int(value)
 
-                    if (name not in _KEY_MAPPING
-                            and 'detailed' not in self.config):
-                        continue
-
-                    for unit in self.config['byte_unit']:
-                        value = diamond.convertor.binary.convert(value=value,
-                                                                 oldUnit=units,
-                                                                 newUnit=unit)
-                        self.publish(name, value, metric_type='GAUGE')
-
-                        # TODO: We only support one unit node here. Fix it!
-                        break
+                    parts[name] = (value, units)
 
                 except ValueError:
                     continue
+
+            parts['MemPercentUsed'] = self._calculate_percent_used(parts)
+
+            for name, output in parts.iteritems():
+                if (name not in _KEY_MAPPING
+                        and 'detailed' not in self.config):
+                    continue
+
+                value, units = output
+                for unit in self.config['byte_unit']:
+                    if units:
+                        value = diamond.convertor.binary.convert(value=value,
+                                                                 oldUnit=units,
+                                                                 newUnit=unit)
+                    self.publish(name, value, metric_type='GAUGE')
+
+                    # TODO: We only support one unit node here. Fix it!
+                    break
             return True
         else:
             if not psutil:
@@ -117,6 +143,10 @@ class MemoryCollector(diamond.collector.Collector):
                 value = diamond.convertor.binary.convert(
                     value=phymem_usage.free, oldUnit=units, newUnit=unit)
                 self.publish('MemFree', value, metric_type='GAUGE')
+
+                value = diamond.convertor.binary.convert(
+                    value=phymem_usage.percent, oldUnit=units, newUnit=unit)
+                self.publish('MemPercentUsed', value, metric_type='GAUGE')
 
                 value = diamond.convertor.binary.convert(
                     value=virtmem_usage.total, oldUnit=units, newUnit=unit)

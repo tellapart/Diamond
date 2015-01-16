@@ -59,7 +59,8 @@ class TestMemoryCollector(CollectorTestCase):
             'SwapCached': 0,
             'VmallocTotal': 34359738367,
             'VmallocUsed': 445452,
-            'VmallocChunk': 34311049240
+            'VmallocChunk': 34311049240,
+            'MemPercentUsed': 4.25
         }
 
         self.setDocExample(collector=self.collector.__class__.__name__,
