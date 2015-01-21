@@ -164,6 +164,12 @@ batch = 100
 
 # hostname_cache_expiration_interval = 300
 
+# If it is possible that the shell command could sometimes return errors, you
+# can optionally allow execution to continue using the last cached value. If
+# no value has already been cached, an exception will be raised as normal.
+
+# hostname_cache_skip_errors = True
+
 # Path Prefix and Suffix
 # you can use one or both to craft the path where you want to put metrics
 # such as: %(path_prefix)s.$(hostname)s.$(path_suffix)s.$(metric)s
