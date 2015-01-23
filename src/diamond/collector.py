@@ -26,6 +26,8 @@ if platform.architecture()[0] == '64bit':
 else:
     MAX_COUNTER = (2 ** 32) - 1
 
+LOG = logging.getLogger('diamond')
+
 
 def get_hostname(config, method=None):
     """
@@ -56,8 +58,16 @@ def get_hostname(config, method=None):
                                     stdout=subprocess.PIPE)
             hostname = proc.communicate()[0].strip()
             if proc.returncode != 0:
-                raise subprocess.CalledProcessError(proc.returncode,
-                                                    config['hostname'])
+                skip_errors = config.get('hostname_cache_skip_errors')
+                # If we aren't explicitly skipping errors OR we have no cached
+                # result, raise an exception.
+                if not skip_errors or method not in get_hostname.cached_results:
+                    raise subprocess.CalledProcessError(proc.returncode,
+                                                        config['hostname'])
+                else:  # Recycle the previously cached version.
+                    hostname = get_hostname.cached_results[method][0]
+                    LOG.error('Unable to reload hostname. Return code: %s',
+                              proc.returncode)
 
     elif method == 'smart':
         hostname = get_hostname(config, 'fqdn_short')
@@ -109,6 +119,10 @@ def get_hostname(config, method=None):
 
 get_hostname.cached_results = {}
 
+def reset_hostname_cache():
+    """Resets the hostname cache. Useful for unit tests.
+    """
+    get_hostname.cached_results = {}
 
 def str_to_bool(value):
     """
