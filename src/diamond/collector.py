@@ -4,6 +4,7 @@
 The Collector class is a base class for all metric collectors.
 """
 
+import json
 import os
 import socket
 import platform
@@ -56,7 +57,8 @@ def get_hostname(config, method=None):
             proc = subprocess.Popen(config['hostname'],
                                     shell=True,
                                     stdout=subprocess.PIPE)
-            hostname = proc.communicate()[0].strip()
+            raw_hostname = proc.communicate()[0].strip()
+            hostname = _parse_shell_hostname(config, raw_hostname)
             if proc.returncode != 0:
                 skip_errors = config.get('hostname_cache_skip_errors')
                 # If we aren't explicitly skipping errors OR we have no cached
@@ -118,6 +120,19 @@ def get_hostname(config, method=None):
     return hostname
 
 get_hostname.cached_results = {}
+
+def _parse_shell_hostname(config, raw_hostname):
+    """Parses the hostname from shell output based on configuration settings.
+    """
+    shell_json_key = config.get('shell_json_key')
+    if shell_json_key:
+        result = json.loads(raw_hostname).get(shell_json_key)
+        if result is None:
+            raise DiamondException(
+                'No value found for shell key %s.' % shell_json_key)
+        return result
+
+    return raw_hostname
 
 def reset_hostname_cache():
     """Resets the hostname cache. Useful for unit tests.
