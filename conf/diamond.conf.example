@@ -170,6 +170,12 @@ batch = 100
 
 # hostname_cache_skip_errors = True
 
+# In order to guard against extra data being passed to stdout from the shell
+# command, optionally set the value of an expected key in a JSON result. The
+# shell command must return an appropriately formatted JSON string.
+
+# shell_json_key = metric_source
+
 # Path Prefix and Suffix
 # you can use one or both to craft the path where you want to put metrics
 # such as: %(path_prefix)s.$(hostname)s.$(path_suffix)s.$(metric)s

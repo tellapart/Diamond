@@ -11,6 +11,7 @@ from diamond.collector import (
     Collector,
     reset_hostname_cache
 )
+from diamond.error import DiamondException
 
 
 class BaseCollectorTest(unittest.TestCase):
@@ -134,3 +135,25 @@ class BaseCollectorTest(unittest.TestCase):
         config['collectors']['default']['hostname'] = 'exit 1'
         c = Collector(config, [])
         self.assertEquals('custom.localhost', c.get_hostname())
+
+    def test_SetHostnameViaShellJson(self):
+        reset_hostname_cache()
+        config = configobj.ConfigObj()
+        config['server'] = {}
+        config['server']['collectors_config_path'] = ''
+        config['collectors'] = {}
+        config['collectors']['default'] = {
+            'hostname': 'python -c "import json; print json.dumps({\'test_key\': \'test_value\'})"',
+            'hostname_method': 'shell',
+            'shell_json_key': 'test_key'
+        }
+
+        c = Collector(config, [])
+        self.assertEquals('test_value', c.get_hostname())
+
+        reset_hostname_cache()
+        config['collectors']['default']['shell_json_key'] = 'bad_key'
+        c = Collector(config, [])
+
+        self.assertRaisesRegexp(
+            DiamondException, 'No value found for shell key', c.get_hostname)
