@@ -392,16 +392,19 @@ class AuroraCollector(diamond.collector.Collector):
 
             yield cluster, hostname, port
 
-    def _fetch_data(self, host, port, url, verb='GET'):
+    def _fetch_data(self, host, port, url, verb='GET', data=None):
         """
         Fetch data from an endpoint and return the parsed JSON result.
         """
         url = 'http://%s:%s/%s' % (host, port, url)
-        headers = {'User-Agent': 'Diamond Aurora Scheduler Collector', }
+        headers = {
+            'User-Agent': 'Diamond Aurora Scheduler Collector',
+            'Content-Type': 'application/json'
+        }
 
         self.log.debug('Requesting Aurora data from: %s' % url)
         req = urllib2.Request(url, headers=headers,
-                              data=None if verb == 'GET' else '')
+                              data=None if verb == 'GET' else data or '')
         opener = urllib2.build_opener(NoRedirectHandler)
         handle = opener.open(req)
         return json.loads(handle.read())
@@ -466,8 +469,8 @@ class AuroraCollector(diamond.collector.Collector):
         for cluster, host, port in self._get_hosts():
             try:
                 try:
-                    job_stats = self._fetch_data(
-                        host, port, 'apibeta/getJobSummary', verb='POST')
+                    role_summary = self._fetch_data(
+                        host, port, 'apibeta/getRoleSummary', verb='POST')
                 except RedirectError:
                     self.log.warn(
                         'GetJobSummmary returned a 302, which indicates an '
@@ -476,7 +479,7 @@ class AuroraCollector(diamond.collector.Collector):
 
                 metrics = self._fetch_data(host, port, 'vars.json')
 
-                cluster = cluster or job_stats['serverInfo']['clusterName']
+                cluster = cluster or role_summary['serverInfo']['clusterName']
 
                 # If this is not the active scheduler, don't publish metrics.
                 if not metrics.get(self.ACTIVE_SCHEDULER_METRIC):
@@ -484,9 +487,15 @@ class AuroraCollector(diamond.collector.Collector):
                     return
 
                 # Publish metrics contained in the job summary information.
-                summaries = job_stats['result']['jobSummaryResult']['summaries']
-                for js in summaries:
-                    self._publish_job_metrics(js, cluster)
+                roles = role_summary['result']['roleSummaryResult']['summaries']
+                for r in roles:
+                    body = json.dumps({'role': r['role']})
+                    res = self._fetch_data(
+                        host, port, 'apibeta/getJobSummary', verb='POST',
+                        data=body)
+                    summaries = res['result']['jobSummaryResult']['summaries']
+                    for js in summaries:
+                        self._publish_job_metrics(js, cluster)
 
                 # Publish explicitly exposed metrics.
                 for raw_name, raw_value in metrics.iteritems():
