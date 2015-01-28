@@ -37,8 +37,11 @@ class TestAuroraCollector(CollectorTestCase):
 
     @patch.object(Collector, 'publish')
     def test_cluster_vars(self, publish_mock):
-        fixtures = [self.getFixture('job_summary'),
-                    self.getFixture('cluster_vars')]
+        fixtures = [
+            self.getFixture('role_summary'),
+            self.getFixture('cluster_vars'),
+            self.getFixture('job_summary')
+        ]
         patch_urlopen = patch('urllib2.OpenerDirector.open',
                               Mock(side_effect=lambda *args: fixtures.pop(0)))
 
@@ -68,8 +71,11 @@ class TestAuroraCollector(CollectorTestCase):
             'scheduler_thrift_createJob_nanos_total': 40390494,
             'task_throttle_events': 258
         }
-        fixtures = [self.getFixture('job_summary'),
-                    StringIO(json.dumps(metrics))]
+        fixtures = [
+            self.getFixture('role_summary'),
+            StringIO(json.dumps(metrics)),
+            self.getFixture('job_summary')
+        ]
         patch_urlopen = patch('urllib2.OpenerDirector.open',
                               Mock(side_effect=lambda *args: fixtures.pop(0)))
 
@@ -86,10 +92,14 @@ class TestAuroraCollector(CollectorTestCase):
             'sla_test_role/prod/my_job_job_uptime_90.00_sec': 1143469,
             'scheduler_lifecycle_ACTIVE': 1
         }
-        fixtures = [self.getFixture('job_summary'),
-                    StringIO(json.dumps(metrics)),
-                    self.getFixture('job_summary'),
-                    StringIO(json.dumps(metrics))]
+        fixtures = [
+            self.getFixture('role_summary'),
+            StringIO(json.dumps(metrics)),
+            self.getFixture('job_summary'),
+            self.getFixture('role_summary'),
+            StringIO(json.dumps(metrics)),
+            self.getFixture('job_summary')
+        ]
         patch_urlopen = patch('urllib2.OpenerDirector.open',
                               Mock(side_effect=lambda *args: fixtures.pop(0)))
 

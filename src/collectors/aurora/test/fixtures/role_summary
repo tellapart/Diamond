@@ -1,0 +1,20 @@
+{
+    "details" : [  ],
+    "responseCode" : "OK",
+    "result" : {
+        "roleSummaryResult" : {
+            "summaries" : [
+                {
+                    "cronJobCount" : 0,
+                    "jobCount" : 2,
+                    "role" : "ubuntu"
+                }
+            ]
+        }
+    },
+    "serverInfo" : {
+        "clusterName" : "general",
+        "statsUrlPrefix" : "",
+        "thriftAPIVersion" : 3
+    }
+}
