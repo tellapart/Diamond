@@ -139,6 +139,10 @@ class TestAuroraCollector(CollectorTestCase):
                     call('job_resources_total_allocated_cpu', 17,
                          metric_type='GAUGE',
                          source='%s.test_role.prod.my_job' % cluster),
+                'job_resources_total_allocated_cpu_adjusted':
+                    call('job_resources_total_allocated_cpu_adjusted', 17.5,
+                         metric_type='GAUGE',
+                         source='%s.test_role.prod.my_job' % cluster),
             }
 
             for k, v in published_metrics.iteritems():

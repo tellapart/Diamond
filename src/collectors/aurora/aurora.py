@@ -312,6 +312,8 @@ class AuroraCollector(diamond.collector.Collector):
         config.update({
             'hosts': ['localhost:8081'],
             'path': 'aurora',
+            'thermos_executor_cpu_overhead': 0.25,
+            'thermos_executor_mem_overhead': 128
         })
         return config
 
@@ -433,15 +435,22 @@ class AuroraCollector(diamond.collector.Collector):
         total_tasks = (float(stats['activeTaskCount']) +
                        float(stats['pendingTaskCount']))
 
+        cpu_overhead = self.config.get('thermos_executor_cpu_overhead')
+        mem_overhead = self.config.get('thermos_executor_mem_overhead')
         resources = [
-            ('cpu', float(task_config['numCpus'])),
-            ('ram_mb', float(task_config['ramMb'])),
-            ('disk_mb', float(task_config['diskMb'])),
+            ('cpu', float(task_config['numCpus']), float(cpu_overhead)),
+            ('ram_mb', float(task_config['ramMb']), float(mem_overhead)),
+            ('disk_mb', float(task_config['diskMb']), 0),
         ]
 
-        for resource, value in resources:
+        for resource, value, overhead in resources:
             self.publish('job_resources_total_allocated_%s' % resource,
                          value * total_tasks, metric_type=GAUGE, source=source)
+            if overhead != 0:
+                self.publish(
+                    'job_resources_total_allocated_%s_adjusted' % resource,
+                    (value + overhead) * total_tasks, metric_type=GAUGE,
+                    source=source)
 
     def _publish_metrics(self, raw_name, raw_value, cluster):
         """
