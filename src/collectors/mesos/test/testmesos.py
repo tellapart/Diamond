@@ -114,11 +114,48 @@ class TestMesosCollector(CollectorTestCase):
         expected_metrics = {
             'job_resources_used_user_cpu': 2.7,
             'job_resources_used_sys_cpu': 1,
-            'job_resources_used_mem_reserved': 79015936 / (1024 * 1024)
+            'job_resources_used_cpu': 3.7,
+            'job_resources_used_mem_total': 79015936 / (1024 * 1024)
         }
         # reverse it so the calls that get checked are the last calls
         publish_mock.call_args_list.reverse()
+
+        # Make sure the sources are right.
+        for arg in publish_mock.call_args_list:
+            self.assertEqual(arg[1]['source'],
+                             'test.docker.devel.hello_docker.0')
+
+        # Make sure the values are correct.
         self.assertPublishedMany(publish_mock, expected_metrics, 2)
+
+        unexpected_metrics = {
+            'job_resources_used_mem_file': 0,
+            'job_resources_used_mem_resident': 0
+        }
+
+        self.assertUnpublishedMany(publish_mock, unexpected_metrics)
+
+    @patch.object(Collector, 'publish')
+    def test_task_memory_metrics(self, publish_mock):
+        fixtures = [StringIO("{}"),
+                    StringIO(json.dumps(self.STATE)),
+                    self.getFixture('slave_perf_3')]
+
+        patch_urlopen = patch('urllib2.urlopen',
+                              Mock(side_effect=lambda *args: fixtures.pop(0)))
+
+        patch_urlopen.start()
+        self.collector.collect()
+        patch_urlopen.stop()
+
+        expected_metrics = {
+            'job_resources_used_mem_total': 79015936 / (1024 * 1024),
+            'job_resources_used_mem_file': 22227836 / (1024 * 1024),
+            'job_resources_used_mem_resident': 56788100 / (1024 * 1024)
+        }
+
+        self.assertPublishedMany(publish_mock, expected_metrics)
+
 
 ################################################################################
 if __name__ == "__main__":

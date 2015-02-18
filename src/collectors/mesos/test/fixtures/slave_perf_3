@@ -1,0 +1,31 @@
+[
+  {
+    "executor_id": "aurora.gc",
+    "executor_name": "aurora.gc",
+    "framework_id": "20141124-225644-119646400-5050-17499-0000",
+    "source": "aurora.local",
+    "statistics": {
+      "cpus_limit": 0.19,
+      "cpus_system_time_secs": 68.86,
+      "cpus_user_time_secs": 44.35,
+      "mem_limit_bytes": 133169152,
+      "mem_rss_bytes": 39452672,
+      "timestamp": 1420580183.6592
+    }
+  },
+  {
+    "executor_id": "thermos-1420503024922-docker-test-devel-hello_docker-0-46e0aa39-8691-414a-992c-919ea2d1003d",
+    "executor_name": "aurora.task",
+    "framework_id": "20141124-225644-119646400-5050-17499-0000",
+    "source": "docker.devel.hello_docker.0",
+    "statistics": {
+      "cpus_limit": 1.25,
+      "cpus_system_time_secs": 800,
+      "cpus_user_time_secs": 300,
+      "mem_file_bytes": 22227836,
+      "mem_limit_bytes": 135266304,
+      "mem_rss_bytes": 79015936,
+      "timestamp": 200
+    }
+  }
+]
