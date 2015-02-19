@@ -31,6 +31,10 @@ import diamond.collector
 GAUGE = 'GAUGE'
 COUNTER = 'COUNTER'
 
+class Size(object):
+    KB = 1024
+    MB = KB * 1024
+
 class Metric(object):
     def __init__(self, name, metric_type):
         self.name = name
@@ -243,7 +247,7 @@ class MesosCollector(diamond.collector.Collector):
                 continue
             else:
                 job_name = executor['source']
-                instance_id = job_name[job_name.rindex('.'):]
+                instance_id = job_name.split('.')[-1]
                 base_job_name = job_name[0:job_name.rindex('.')]
                 source = cluster + '.' + base_job_name
 
@@ -259,22 +263,37 @@ class MesosCollector(diamond.collector.Collector):
                                                         'cpus_system_time_secs',
                                                         'sys_cpu')
             total_cpu = user_cpu + sys_cpu
-            mem_used = stats['mem_rss_bytes'] / (1024 * 1024)
-            self._publish_metric_set(user_cpu, sys_cpu, total_cpu, mem_used,
-                                     instance_id, source)
+            mem_total = stats['mem_rss_bytes'] / Size.MB
 
-    def _publish_metric_set(self, user_cpu, sys_cpu, total_cpu, mem_used,
-                            instance_id, source):
-        full_source = source + instance_id
-        self.publish('job_resources_used_user_cpu', user_cpu, source=full_source)
-        self.publish('job_resources_used_sys_cpu', sys_cpu, source=full_source)
-        self.publish('job_resources_used_cpu', total_cpu, source=full_source)
-        self.publish('job_resources_used_mem_reserved', mem_used,
-                     source=full_source)
+            # File cache memory isn't always available (e.g. Docker containers)
+            mem_file = stats.get('mem_file_bytes')
+            if mem_file is not None:
+                mem_file /= Size.MB
+
+            mem_resident = None if mem_file is None else mem_total - mem_file
+
+            metrics = {
+                'user_cpu': user_cpu,
+                'sys_cpu': sys_cpu,
+                'cpu': total_cpu,
+                'mem_total': mem_total,
+                'mem_file': mem_file,
+                'mem_resident': mem_resident
+            }
+            self._publish_metric_set(source, instance_id, **metrics)
+
+    def _publish_metric_set(self, source, instance_id, **metrics):
+        """
+        Publishes dictionary of metrics for a given source/instance.
+        """
+        full_source = "%s.%s" % (source, instance_id)
+        for k, v in metrics.iteritems():
+            if v is not None:
+                self.publish('job_resources_used_%s' % k, v, source=full_source)
 
     def _calculate_derivative_metric(self, source, instance_id, stats,
                                      stat_name, metric_name):
-        metric = metric_name + '.' + source + instance_id
+        metric = '%s.%s.%s' % (metric_name, source, instance_id)
         return self.derivative(metric,
                                stats[stat_name],
                                timestamp=float(stats['timestamp']))
