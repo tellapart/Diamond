@@ -58,8 +58,9 @@ def get_hostname(config, method=None):
                                     shell=True,
                                     stdout=subprocess.PIPE)
             raw_hostname = proc.communicate()[0].strip()
-            hostname = _parse_shell_hostname(config, raw_hostname)
-            if proc.returncode != 0:
+            if proc.returncode == 0:  # Only try to parse if call successful.
+                hostname = _parse_shell_hostname(config, raw_hostname)
+            else:
                 skip_errors = config.get('hostname_cache_skip_errors')
                 # If we aren't explicitly skipping errors OR we have no cached
                 # result, raise an exception.

@@ -157,3 +157,41 @@ class BaseCollectorTest(unittest.TestCase):
 
         self.assertRaisesRegexp(
             DiamondException, 'No value found for shell key', c.get_hostname)
+
+    @patch('time.time')
+    def test_SetHostnameViaShellCmdWithErrorSkipJsonKey(self, patch_time):
+        reset_hostname_cache()
+        config = configobj.ConfigObj()
+        config['server'] = {}
+        config['server']['collectors_config_path'] = ''
+        config['collectors'] = {}
+        config['collectors']['default'] = {
+            'hostname': 'exit 1',
+            'hostname_method': 'shell',
+            'hostname_cache_expiration_interval': '300',
+            'hostname_cache_skip_errors': True,
+            'shell_json_key': 'test_key'
+        }
+        # Should fail the first time.
+        c = Collector(config, [])
+        self.assertRaises(CalledProcessError, c.get_hostname)
+
+        script = 'python -c "import json; print json.dumps({\'test_key\': \'test_value\'})"'
+
+        # Success
+        patch_time.return_value = 0
+        config['collectors']['default']['hostname'] = script
+        c = Collector(config, [])
+        self.assertEquals('test_value', c.get_hostname())
+
+        # Should NOT fail before the timeout.
+        patch_time.return_value = 299
+        config['collectors']['default']['hostname'] = 'exit 1'
+        c = Collector(config, [])
+        self.assertEquals('test_value', c.get_hostname())
+
+        # Should NOT fail again after the timeout.
+        patch_time.return_value = 301
+        config['collectors']['default']['hostname'] = 'exit 1'
+        c = Collector(config, [])
+        self.assertEquals('test_value', c.get_hostname())
