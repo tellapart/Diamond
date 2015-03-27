@@ -304,9 +304,6 @@ class MesosCollector(diamond.collector.Collector):
         """
         for host, port in self._get_hosts():
             try:
-                # TODO(george): If we want to publish stats using the actual
-                # mesos cluster name, we can cut over to use state.json.
-                # Unfortunately, it only returns the cluster name on the master.
                 metrics = self._fetch_data(host, port, 'metrics/snapshot')
 
                 # If this is a master but not the elected master, don't publish.
@@ -319,6 +316,9 @@ class MesosCollector(diamond.collector.Collector):
                 for raw_name, raw_value in metrics.iteritems():
                     self._publish_metrics(raw_name, raw_value)
 
+                # IMPORTANT: do not fetch state.json from the master; it is a
+                # blocking operation that interferes with basic Mesos
+                # operations.
                 if is_primary_master is None:
                     state = self._fetch_data(host, port, 'state.json')
                     cluster = state['attributes'].get('group') or 'unknown'
