@@ -45,6 +45,7 @@ class CPUCollector(diamond.collector.Collector):
             'percore':  'Collect metrics per cpu core or just total',
             'simple':   'only return aggregate CPU% metric',
             'normalize': 'for cpu totals, divide by the number of CPUs',
+            'include_aggregate': 'Include aggregate CPU% even if not in simple mode.'
         })
         return config_help
 
@@ -60,6 +61,7 @@ class CPUCollector(diamond.collector.Collector):
             'xenfix':   None,
             'simple':   'False',
             'normalize': 'False',
+            'include_aggregate': 'False'
         })
         return config
 
@@ -94,11 +96,14 @@ class CPUCollector(diamond.collector.Collector):
         if os.access(self.PROC, os.R_OK):
 
             #If simple only return aggregate CPU% metric
-            if str_to_bool(self.config['simple']):
+            simple = str_to_bool(self.config['simple'])
+            include_aggregate = str_to_bool(self.config['include_aggregate'])
+            if simple or include_aggregate:
                 dt = cpu_delta_time(self.INTERVAL)
                 cpuPct = 100 - (dt[len(dt) - 1] * 100.00 / sum(dt))
                 self.publish('percent', str('%.4f' % cpuPct))
-                return True
+                if simple:
+                    return True
 
             results = {}
             # Open file
