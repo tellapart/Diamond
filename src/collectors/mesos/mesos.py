@@ -262,15 +262,29 @@ class MesosCollector(diamond.collector.Collector):
                                                         stats,
                                                         'cpus_system_time_secs',
                                                         'sys_cpu')
-            total_cpu = user_cpu + sys_cpu
-            mem_total = stats['mem_rss_bytes'] / Size.MB
+            if stats.contains('cpus_throttled_time_secs'):
+                time_throttled = self._calculate_derivative_metric(source,
+                                                                   instance_id,
+                                                                   stats,
+                                                                   'cpus_throttled_time_secs',
+                                                                   'time_throttled')
+            else:
+                time_throttled = 0
 
-            # File cache memory isn't always available (e.g. Docker containers)
+            total_cpu = user_cpu + sys_cpu
+            # mem_rss_bytes (before mesos 0.23.0) is the total memory used
+            # including the file cache, as reported from memory.usage_in_bytes.
+
+            # anon_bytes is the RSS as reported from "total_rss" in memory.stat
+            # TODO: mesos 0.23.0 is changing the meaning of mem_rss_bytes to be
+            # mem_anon_bytes.  This needs to be updated when moving to mesos 0.23.0
+            mem_total = stats['mem_rss_bytes'] / Size.MB
+            mem_rss = stats['mem_anon_bytes'] / Size.MB
+
+            # File cache memory isn't always available.
             mem_file = stats.get('mem_file_bytes')
             if mem_file is not None:
                 mem_file /= Size.MB
-
-            mem_resident = None if mem_file is None else mem_total - mem_file
 
             metrics = {
                 'user_cpu': user_cpu,
@@ -278,7 +292,8 @@ class MesosCollector(diamond.collector.Collector):
                 'cpu': total_cpu,
                 'mem_total': mem_total,
                 'mem_file': mem_file,
-                'mem_resident': mem_resident
+                'mem_resident': mem_rss,
+                'time_throttled': time_throttled
             }
             self._publish_metric_set(source, instance_id, **metrics)
 
