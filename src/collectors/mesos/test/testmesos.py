@@ -60,14 +60,14 @@ class TestMesosCollector(CollectorTestCase):
     @patch.object(Collector, 'publish')
     def test_no_publish_if_inactive(self, publish_mock):
         metrics = {
-            'master_elected': 0,
+            'master/elected': 0,
             'master_mem_used': 297300,
             'master_slave_registrations': 11,
             'system_mem_free_bytes': 1334034432
         }
 
-        mm = StringIO(json.dumps(metrics))
-        patch_urlopen = patch('urllib2.urlopen', Mock(return_value=mm))
+        patch_urlopen = patch('urllib2.urlopen',
+            Mock(side_effect=lambda *args: StringIO(json.dumps(metrics))))
 
         patch_urlopen.start()
         self.collector.collect()

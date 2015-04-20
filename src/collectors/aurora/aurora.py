@@ -289,9 +289,8 @@ class AuroraCollector(diamond.collector.Collector):
         self.published_metrics = published_metrics
 
         self.dynamic_metrics = [
-            ('sla_job', GAUGE, self._generate_sla_regex()),
-            # TODO(george): remove permanently if polling JSON API works.
-            # ('tasks_job', COUNTER, self._generate_tasks_regex())
+            ('sla_job_%s', GAUGE, self._generate_sla_regex()),
+            ('job_stats_%s_tasks', COUNTER, self._generate_tasks_regex())
         ]
 
         super(AuroraCollector, self).__init__(config, handlers)
@@ -352,7 +351,7 @@ class AuroraCollector(diamond.collector.Collector):
             return raw_name, metric_type, None
 
         # If we have a hit on a regex, extract the name + source from raw_name.
-        for prefix, metric_type, regex in self.dynamic_metrics:
+        for format_str, metric_type, regex in self.dynamic_metrics:
             match = regex.match(raw_name)
             if match:
                 role = match.group('role')
@@ -360,7 +359,7 @@ class AuroraCollector(diamond.collector.Collector):
                 job = match.group('job')
                 metric = match.group('metric')
 
-                name = '%s_%s' % (prefix, metric)
+                name = format_str % metric.lower()
                 source = self._create_source(cluster, role, env, job)
                 return name, metric_type, source
 
@@ -423,8 +422,10 @@ class AuroraCollector(diamond.collector.Collector):
         tasks = [
             ('active', float(stats['activeTaskCount']), GAUGE),
             ('pending', float(stats['pendingTaskCount']), GAUGE),
-            ('finished', float(stats['finishedTaskCount']), COUNTER),
-            ('failed', float(stats['failedTaskCount']), COUNTER)
+            # Do not collect from job summary API; the counters can go backwards
+            # as older tasks are cleaned up.
+            #('finished', float(stats['finishedTaskCount']), COUNTER),
+            #('failed', float(stats['failedTaskCount']), COUNTER)
         ]
 
         for task, value, metric_type in tasks:
