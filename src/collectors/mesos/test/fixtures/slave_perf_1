@@ -24,6 +24,7 @@
       "cpus_user_time_secs": 30,
       "mem_limit_bytes": 135266304,
       "mem_rss_bytes": 79015936,
+      "mem_anon_bytes": 56788100,
       "timestamp": 100
     }
   }

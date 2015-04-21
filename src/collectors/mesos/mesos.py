@@ -262,7 +262,7 @@ class MesosCollector(diamond.collector.Collector):
                                                         stats,
                                                         'cpus_system_time_secs',
                                                         'sys_cpu')
-            if stats.contains('cpus_throttled_time_secs'):
+            if 'cpus_throttled_time_secs' in stats:
                 time_throttled = self._calculate_derivative_metric(source,
                                                                    instance_id,
                                                                    stats,

@@ -88,7 +88,8 @@ class TestAuroraCollector(CollectorTestCase):
     @patch.object(Collector, 'publish')
     def test_extract_metric_and_source(self, publish_mock):
         metrics = {
-            'tasks_FAILED_ubuntu/devel/test.other': 123,
+            'tasks_FAILED_test_role/prod/my_job': 103,
+            'tasks_LOST_test_role/prod/my_job': 111,
             'sla_test_role/prod/my_job_job_uptime_90.00_sec': 1143469,
             'scheduler_lifecycle_ACTIVE': 1
         }
@@ -128,11 +129,11 @@ class TestAuroraCollector(CollectorTestCase):
                          metric_type='GAUGE',
                          source='%s.test_role.prod.my_job' % cluster),
                 'job_stats_failed_tasks':
-                    call('job_stats_failed_tasks', 1,
+                    call('job_stats_failed_tasks', 103,
                          metric_type='COUNTER',
                          source='%s.test_role.prod.my_job' % cluster),
-                'job_stats_finished_tasks':
-                    call('job_stats_finished_tasks', 4,
+                'job_stats_lost_tasks':
+                    call('job_stats_lost_tasks', 111,
                          metric_type='COUNTER',
                          source='%s.test_role.prod.my_job' % cluster),
                 'job_resources_total_allocated_cpu':
@@ -148,6 +149,7 @@ class TestAuroraCollector(CollectorTestCase):
             for k, v in published_metrics.iteritems():
                 calls = filter(lambda x: x[0][0] == k,
                                publish_mock.call_args_list)
+                self.assertEqual(calls[0] if calls else '', v)
                 self.assertEqual(calls[0], v)
 
             publish_mock.reset_mock()
