@@ -2,6 +2,7 @@
 # coding=utf-8
 ################################################################################
 
+from mock import patch, Mock
 from test import unittest
 from test import run_only
 import configobj
@@ -65,3 +66,26 @@ class TestLibratoHandler(unittest.TestCase):
                 'aggregate': True
             }
         })
+
+    @run_only_if_librato_is_available
+    def test_metric_to_librato_expiration(self):
+        config = configobj.ConfigObj()
+        config['queue_max_age'] = 900
+
+        metric = Metric(
+            'servers.com.example.www.cpu.total.idle',
+            0,
+            timestamp=0,
+            host='com.example.www',
+            interval=60)
+
+        handler = LibratoHandler(config)
+        handler.process(metric)
+
+        with patch('time.time', Mock(return_value=10)):
+            items = handler._get_valid_items()
+            self.assertEqual(len(items), 1)
+
+        with patch('time.time', Mock(return_value=900)):
+            items = handler._get_valid_items()
+            self.assertEqual(len(items), 0)

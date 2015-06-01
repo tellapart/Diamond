@@ -59,13 +59,13 @@ class LibratoHandler(Handler):
             return
 
         # Initialize Options
-        api = librato.connect(self.config['user'],
-                              self.config['apikey'])
-        self.queue = api.new_queue()
+        self.api = librato.connect(self.config['user'], self.config['apikey'])
+
+        self.queue = []
+        self.queue_max_age = int(self.config['queue_max_age'])
         self.queue_max_size = int(self.config['queue_max_size'])
         self.queue_max_interval = int(self.config['queue_max_interval'])
         self.queue_max_timestamp = int(time.time() + self.queue_max_interval)
-        self.current_n_measurements = 0
 
         # If a user leaves off the ending comma, cast to a array for them
         include_filters = self.config['include_filters']
@@ -83,6 +83,7 @@ class LibratoHandler(Handler):
         config.update({
             'user': '',
             'apikey': '',
+            'queue_max_age': '',
             'queue_max_size': '',
             'queue_max_interval': '',
             'include_filters': '',
@@ -101,6 +102,7 @@ class LibratoHandler(Handler):
         config.update({
             'user': '',
             'apikey': '',
+            'queue_max_age': 1800,
             'queue_max_size': 300,
             'queue_max_interval': 60,
             'include_filters': ['^.*'],
@@ -151,26 +153,43 @@ class LibratoHandler(Handler):
 
         if self.include_reg.match(path):
             item = self._get_queue_item(metric)
-            self.queue.add(**item)
-            self.current_n_measurements += 1
+            self.queue.append(item)
         else:
             self.log.debug("LibratoHandler: Skip %s, no include_filters match",
                            path)
 
-        if (self.current_n_measurements >= self.queue_max_size or
+        if (len(self.queue) >= self.queue_max_size or
                 time.time() >= self.queue_max_timestamp):
             self.log.debug("LibratoHandler: Sending batch size: %d",
-                           self.current_n_measurements)
+                           len(self.queue))
             self._send()
 
     def flush(self):
         """Flush metrics in queue"""
         self._send()
 
+    def _get_valid_items(self):
+        """Get a list of items that are appropriate to send to Librato."""
+        age_cutoff = time.time() - self.queue_max_age
+        items = [q for q in self.queue if q['measure_time'] > age_cutoff]
+
+        diff = len(self.queue) - len(items)
+        if diff > 0:
+            self.log.debug("LibratoHandler: Dropping %d expired items.", diff)
+
+        return items
+
     def _send(self):
         """
         Send data to Librato.
         """
-        self.queue.submit()
+        # Make a new queue each time before submitting. There is no supported
+        # way to clear a queue, so start from scratch each time.
+        librato_queue = self.api.new_queue()
+        for i in self._get_valid_items():
+            librato_queue.add(**i)
+
+        librato_queue.submit()
+
         self.queue_max_timestamp = int(time.time() + self.queue_max_interval)
-        self.current_n_measurements = 0
+        self.queue = []
