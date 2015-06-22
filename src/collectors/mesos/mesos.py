@@ -286,6 +286,14 @@ class MesosCollector(diamond.collector.Collector):
             if mem_file is not None:
                 mem_file /= Size.MB
 
+            disk_limit = stats.get('disk_limit_bytes')
+            disk_used = stats.get('disk_used_bytes')
+
+            disk_used_mb = float(disk_used) / Size.MB if disk_used else None
+            disk_used_percent = None
+            if disk_limit and disk_used:
+                disk_used_percent = (float(disk_used) / float(disk_limit)) * 100
+
             metrics = {
                 'user_cpu': user_cpu,
                 'sys_cpu': sys_cpu,
@@ -293,7 +301,9 @@ class MesosCollector(diamond.collector.Collector):
                 'mem_total': mem_total,
                 'mem_file': mem_file,
                 'mem_resident': mem_rss,
-                'time_throttled': time_throttled
+                'time_throttled': time_throttled,
+                'disk_percent': disk_used_percent,
+                'disk_mb': disk_used_mb
             }
             self._publish_metric_set(source, instance_id, **metrics)
 
