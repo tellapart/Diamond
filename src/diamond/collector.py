@@ -192,12 +192,13 @@ class Collector(object):
             # Merge Collector config section
             self.config.merge(config['collectors'][cls.__name__])
 
-        # Check for config file in config directory
-        configfile = os.path.join(config['server']['collectors_config_path'],
-                                  cls.__name__) + '.conf'
-        if os.path.exists(configfile):
-            # Merge Collector config file
-            self.config.merge(configobj.ConfigObj(configfile))
+        if not config.get('ignore_config_files', False):
+            # Check for config file in config directory
+            configfile = os.path.join(config['server']['collectors_config_path'],
+                                      cls.__name__) + '.conf'
+            if os.path.exists(configfile):
+                # Merge Collector config file
+                self.config.merge(configobj.ConfigObj(configfile))
 
         # Handle some config file changes transparently
         if isinstance(self.config['byte_unit'], basestring):
@@ -442,15 +443,15 @@ class Collector(object):
 
     def derivative(self, name, new, max_value=0,
                    time_delta=True, interval=None, timestamp=None,
-                   allow_negative=False, instance=None):
+                   allow_negative=False, instance=None, source=None):
         """
         Calculate the derivative of the metric.
         """
         # Format Metric Path
         path = self.get_metric_path(name, instance=instance)
 
-        if path in self.last_values:
-            old, old_timestamp = self.last_values[path]
+        if (path, source) in self.last_values:
+            old, old_timestamp = self.last_values[(path, source)]
             # Check for rollover
             if new < old:
                 old = old - max_value
@@ -476,7 +477,7 @@ class Collector(object):
             result = 0
 
         # Store Old Value
-        self.last_values[path] = (new, timestamp)
+        self.last_values[(path, source)] = (new, timestamp)
 
         # Return result
         return result

@@ -27,40 +27,41 @@ class Server(object):
     Server class loads and starts Handlers and Collectors
     """
 
-    def __init__(self, config):
+    def __init__(self, config, scheduler=ThreadedScheduler):
         # Initialize Logging
         self.log = logging.getLogger('diamond')
         # Initialize Members
         self.config = config
+        self.ignore_config_files = self.config.get('ignore_config_files', False)
         self.running = False
         self.handlers = []
         self.modules = {}
         self.tasks = {}
         self.collector_paths = []
         # Initialize Scheduler
-        self.scheduler = ThreadedScheduler()
+        self.scheduler = scheduler()
 
     def load_config(self):
         """
         Load the full config / merge splitted configs if configured
         """
+        if not self.ignore_config_files:
+            configfile = os.path.abspath(self.config['configfile'])
+            config = configobj.ConfigObj(configfile)
+            config['configfile'] = self.config['configfile']
+            try:
+                    for cfgfile in os.listdir(config['configs']['path']):
+                        if cfgfile.endswith(config['configs']['extension']):
+                            newconfig = configobj.ConfigObj(
+                                config['configs']['path'] + cfgfile)
+                            config.merge(newconfig)
+            except KeyError:
+                    pass
 
-        configfile = os.path.abspath(self.config['configfile'])
-        config = configobj.ConfigObj(configfile)
-        config['configfile'] = self.config['configfile']
-        try:
-                for cfgfile in os.listdir(config['configs']['path']):
-                    if cfgfile.endswith(config['configs']['extension']):
-                        newconfig = configobj.ConfigObj(
-                            config['configs']['path'] + cfgfile)
-                        config.merge(newconfig)
-        except KeyError:
-                pass
+            if 'server' not in config:
+                raise Exception('Failed to reload config file %s!' % configfile)
 
-        if 'server' not in config:
-            raise Exception('Failed to reload config file %s!' % configfile)
-
-        self.config = config
+            self.config = config
 
     def load_handler(self, fqcn):
         """
@@ -98,12 +99,13 @@ class Server(object):
                     handler_config.merge(self.config['handlers'][cls.__name__])
 
                 # Check for config file in config directory
-                configfile = os.path.join(
-                    self.config['server']['handlers_config_path'],
-                    cls.__name__) + '.conf'
-                if os.path.exists(configfile):
-                    # Merge Collector config file
-                    handler_config.merge(configobj.ConfigObj(configfile))
+                if not self.ignore_config_files:
+                    configfile = os.path.join(
+                        self.config['server']['handlers_config_path'],
+                        cls.__name__) + '.conf'
+                    if os.path.exists(configfile):
+                        # Merge Collector config file
+                        handler_config.merge(configobj.ConfigObj(configfile))
 
                 # Initialize Handler class
                 self.handlers.append(cls(handler_config))
@@ -324,7 +326,7 @@ class Server(object):
             # Add task to list
             self.tasks[name] = task
 
-    def run(self):
+    def run(self, reload=True, async=False):
         """
         Load handler and collector classes and then start collectors
         """
@@ -362,7 +364,7 @@ class Server(object):
             self.schedule_collector(c)
 
         # Start main loop
-        self.mainloop()
+        self.mainloop(reload=reload, async=async)
 
     def run_one(self, file):
         """
@@ -413,7 +415,7 @@ class Server(object):
         # Start main loop
         self.mainloop(False)
 
-    def mainloop(self, reload=True):
+    def mainloop(self, reload=True, async=False):
 
         # Start scheduler
         self.scheduler.start()
@@ -424,43 +426,44 @@ class Server(object):
         # Initialize reload timer
         time_since_reload = 0
 
-        # Main Loop
-        while self.running:
-            time.sleep(1)
-            time_since_reload += 1
+        if not async:
+            # Main Loop
+            while self.running:
+                time.sleep(1)
+                time_since_reload += 1
 
-            # Check if its time to reload collectors
-            if (reload
-                    and time_since_reload
-                    > int(self.config['server']['collectors_reload_interval'])):
-                self.log.debug("Reloading config.")
-                self.load_config()
-                # Log
-                self.log.debug("Reloading collectors.")
-                # Load collectors
-                collectors = self.load_collectors(self.collector_paths)
-                # Setup any Collectors that were loaded
-                for cls in collectors.values():
-                    # Initialize Collector
-                    c = self.init_collector(cls)
-                    # Schedule Collector
-                    self.schedule_collector(c)
+                # Check if its time to reload collectors
+                reload_interval = int(
+                    self.config['server']['collectors_reload_interval'])
+                if reload and time_since_reload > reload_interval:
+                    self.log.debug("Reloading config.")
+                    self.load_config()
+                    # Log
+                    self.log.debug("Reloading collectors.")
+                    # Load collectors
+                    collectors = self.load_collectors(self.collector_paths)
+                    # Setup any Collectors that were loaded
+                    for cls in collectors.values():
+                        # Initialize Collector
+                        c = self.init_collector(cls)
+                        # Schedule Collector
+                        self.schedule_collector(c)
 
-                # Reset reload timer
-                time_since_reload = 0
+                    # Reset reload timer
+                    time_since_reload = 0
 
-            # Is the queue empty and we won't attempt to reload it? Exit
-            if not reload and len(self.scheduler.sched._queue) == 0:
-                self.running = False
+                # Is the queue empty and we won't attempt to reload it? Exit
+                if not reload and len(self.scheduler.sched._queue) == 0:
+                    self.running = False
 
-        # Log
-        self.log.debug('Stopping task scheduler.')
-        # Stop scheduler
-        self.scheduler.stop()
-        # Log
-        self.log.info('Stopped task scheduler.')
-        # Log
-        self.log.debug("Exiting.")
+            # Log
+            self.log.debug('Stopping task scheduler.')
+            # Stop scheduler
+            self.scheduler.stop()
+            # Log
+            self.log.info('Stopped task scheduler.')
+            # Log
+            self.log.debug("Exiting.")
 
     def stop(self):
         """

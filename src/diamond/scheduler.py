@@ -452,6 +452,40 @@ class MonthdayTask(DayTaskRescheduler, Task):
         if time.localtime().tm_mday in self.days:
             self.action(*self.args, **self.kw)
 
+try:
+    import gevent
+
+    class GeventScheduler(Scheduler):
+        """A scheduler that dispatches tasks via Gevent"""
+
+        def __init__(self):
+            Scheduler.__init__(self)
+            from gevent.coros import RLock
+            self._lock = RLock()
+
+        def start(self):
+            """Spawn a greenlet for the main event loop."""
+            self.greenlet = gevent.spawn(self._run)
+
+        def stop(self):
+            """Stop the scheduler and wait for the thread to finish."""
+            Scheduler.stop(self)
+            try:
+                self.greenlet.kill(block=False)
+            except AttributeError:
+                pass
+
+        def _acquire_lock(self):
+            """Lock the thread's task queue."""
+            self._lock.acquire()
+
+        def _release_lock(self):
+            """Release the lock on the thread's task queue."""
+            self._lock.release()
+
+except ImportError:
+    # gevent is not available
+    pass
 
 try:
     import threading
