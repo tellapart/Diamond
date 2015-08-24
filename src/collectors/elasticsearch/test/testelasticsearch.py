@@ -6,7 +6,7 @@ from test import CollectorTestCase
 from test import get_collector_config
 from test import unittest
 from mock import Mock
-from mock import patch
+from mock import call, patch
 
 from diamond.collector import Collector
 
@@ -27,13 +27,13 @@ class TestElasticSearchCollector(CollectorTestCase):
     def test_new__instances_default(self):
         config = get_collector_config('ElasticSearchCollector', {})
         self.collector = ElasticSearchCollector(config, None)
-        self.assertEqual(self.collector.instances, {'': ('127.0.0.1', 9200)})
+        self.assertEqual(self.collector.get_instances(), {'': ('127.0.0.1', 9200)})
 
     def test_new__instances_single(self):
         config = get_collector_config('ElasticSearchCollector', {
             'instances': 'bla'})
         self.collector = ElasticSearchCollector(config, None)
-        self.assertEqual(self.collector.instances, {'default': ('bla', 9200)})
+        self.assertEqual(self.collector.get_instances(), {'default': ('bla', 9200)})
 
     def test_new__instances_multi(self):
         config = get_collector_config('ElasticSearchCollector', {
@@ -43,7 +43,7 @@ class TestElasticSearchCollector(CollectorTestCase):
                 'bar@bla:1234',
             ]})
         self.collector = ElasticSearchCollector(config, None)
-        self.assertEqual(self.collector.instances, {
+        self.assertEqual(self.collector.get_instances(), {
             'default': ('something', 9200),
             'foo': ('1234', 9200),
             'bar': ('bla', 1234),
@@ -227,7 +227,7 @@ class TestElasticSearchCollector(CollectorTestCase):
                 'esprodata02@10.10.10.202:9200',
             ]})
         self.collector = ElasticSearchCollector(config, None)
-        self.assertEqual(len(self.collector.instances), 2)
+        self.assertEqual(len(self.collector.get_instances()), 2)
 
         returns = [
             self.getFixture('stats'),
@@ -245,24 +245,26 @@ class TestElasticSearchCollector(CollectorTestCase):
         # check how many fixtures were consumed
         self.assertEqual(urlopen_mock.new.call_count, 4)
 
-        metrics = {
-            'esprodata01.http.current': 1,
-            'esprodata02.http.current': 2,
+        expected_calls = [
+            call('http.current', 1, source='esprodata01'),
+            call('http.current', 2, source='esprodata02'),
 
-            'esprodata01.indices.docs.count': 11968062,
-            'esprodata02.indices.docs.count': 11968000,
+            call('indices.docs.count', 11968062, source='esprodata01'),
+            call('indices.docs.count', 11968000, source='esprodata02'),
 
-            'esprodata01.thread_pool.generic.threads': 1,
-            'esprodata02.thread_pool.generic.threads': 2,
+            call('thread_pool.generic.threads', 1, source='esprodata01'),
+            call('thread_pool.generic.threads', 2, source='esprodata02'),
 
-            'esprodata01.jvm.mem.pools.Par_Survivor_Space.max': 8716288,
-            'esprodata02.jvm.mem.pools.Par_Survivor_Space.max': 8710000,
+            call('jvm.mem.pools.Par_Survivor_Space.max', 8716288, source='esprodata01'),
+            call('jvm.mem.pools.Par_Survivor_Space.max', 8710000, source='esprodata02'),
 
-            'esprodata01.indices._all.docs.count': 4,
-            'esprodata02.indices._all.docs.count': 8,
-        }
+            call('indices._all.docs.count', 4, source='esprodata01'),
+            call('indices._all.docs.count', 8, source='esprodata02'),
+        ]
 
-        self.assertPublishedMany(publish_mock, metrics)
+        for exp_call in expected_calls:
+            publish_mock.assert_has_calls(exp_call)
+
 
 ################################################################################
 if __name__ == "__main__":

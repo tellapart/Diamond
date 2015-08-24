@@ -321,7 +321,6 @@ class RedisCollector(diamond.collector.Collector):
                 data['last_save.time_since'] = int(time.time()) - info[key]
 
         return data
-        # Publish the data to handlers
 
     def collect(self):
         """Collect the stats from the redis instances and publish them.
