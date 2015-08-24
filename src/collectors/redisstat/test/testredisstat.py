@@ -86,7 +86,9 @@ class TestRedisCollector(CollectorTestCase):
                   'uptime_in_seconds': 32,
                   'changes_since_last_save': 0,
                   'redis_git_dirty': 0,
-                  'keyspace_hits': 0
+                  'keyspace_hits': 0,
+                  'rejected_connections': 10,
+                  'cmdstat_cluster': {'usec_per_call': 101, 'calls': 300}
                   }
         data_2 = {'pubsub_channels': 1,
                   'used_memory_peak_human': '1700.71K',
@@ -130,7 +132,9 @@ class TestRedisCollector(CollectorTestCase):
                   'uptime_in_seconds': 95732,
                   'changes_since_last_save': 759,
                   'redis_git_dirty': 0,
-                  'keyspace_hits': 5700
+                  'keyspace_hits': 5700,
+                  'rejected_connections': 25,
+                  'cmdstat_cluster': {'usec_per_call': 101, 'calls': 378}
                   }
 
         patch_collector = patch.object(RedisCollector, '_get_info',
@@ -155,27 +159,30 @@ class TestRedisCollector(CollectorTestCase):
         patch_collector.stop()
         patch_time.stop()
 
-        metrics = {'6379.process.uptime': 95732,
-                   '6379.pubsub.channels': 1,
-                   '6379.slaves.connected': 2,
-                   '6379.process.connections_received': 18764,
-                   '6379.clients.longest_output_list': 0,
-                   '6379.process.commands_processed': 19764,
-                   '6379.last_save.changes_since': 759,
-                   '6379.memory.external_view': 17254016,
-                   '6379.memory.fragmentation_ratio': 0.99,
-                   '6379.last_save.time': 51351718385,
-                   '6379.clients.connected': 100,
-                   '6379.clients.blocked': 8,
-                   '6379.pubsub.patterns': 0,
-                   '6379.cpu.parent.user': 0.09,
-                   '6379.last_save.time_since': -51351718365,
-                   '6379.memory.internal_view': 1726144,
-                   '6379.cpu.parent.sys': 0.05,
-                   '6379.keyspace.misses': 670,
-                   '6379.keys.expired': 0,
-                   '6379.keys.evicted': 0,
-                   '6379.keyspace.hits': 5700,
+        metrics = {'process.uptime': 95732,
+                   'pubsub.channels': 1,
+                   'slaves.connected': 2,
+                   'process.connections_received': 18764,
+                   'clients.longest_output_list': 0,
+                   'process.commands_processed': 19764,
+                   'last_save.changes_since': 759,
+                   'memory.used_memory_rss': 17254016,
+                   'memory.fragmentation_ratio': 0.99,
+                   'last_save.time': 51351718385,
+                   'clients.connected': 100,
+                   'clients.blocked': 8,
+                   'pubsub.patterns': 0,
+                   'cpu.parent.user': 0.09,
+                   'last_save.time_since': -51351718365,
+                   'memory.used_memory': 1726144,
+                   'cpu.parent.sys': 0.05,
+                   'keyspace.misses': 670,
+                   'keys.expired': 0,
+                   'keys.evicted': 0,
+                   'keyspace.hits': 5700,
+                   'clients.rejected_connections': 15,
+                   'cmdstat.cluster.usec_per_call': 101,
+                   'cmdstat.cluster.calls': 78
                    }
 
         self.assertPublishedMany(publish_mock, metrics)
@@ -191,37 +198,37 @@ class TestRedisCollector(CollectorTestCase):
         testcases = {
             'default': {
                 'config': {},  # test default settings
-                'calls': [call('6379', 'localhost', 6379, None)],
+                'calls': [call('localhost', 6379, None)],
             },
             'host_set': {
                 'config': {'host': 'myhost'},
-                'calls': [call('6379', 'myhost', 6379, None)],
+                'calls': [call('myhost', 6379, None)],
             },
             'port_set': {
                 'config': {'port': 5005},
-                'calls': [call('5005', 'localhost', 5005, None)],
+                'calls': [call('localhost', 5005, None)],
             },
             'hostport_set': {
                 'config': {'host': 'megahost', 'port': 5005},
-                'calls': [call('5005', 'megahost', 5005, None)],
+                'calls': [call('megahost', 5005, None)],
             },
             'instance_1_host': {
                 'config': {'instances': ['nick@myhost']},
-                'calls': [call('nick', 'myhost', 6379, None)],
+                'calls': [call('myhost', 6379, None)],
             },
             'instance_1_port': {
                 'config': {'instances': ['nick@:9191']},
-                'calls': [call('nick', 'localhost', 9191, None)],
+                'calls': [call('localhost', 9191, None)],
             },
             'instance_1_hostport': {
                 'config': {'instances': ['nick@host1:8765']},
-                'calls': [call('nick', 'host1', 8765, None)],
+                'calls': [call('host1', 8765, None)],
             },
             'instance_2': {
                 'config': {'instances': ['foo@hostX', 'bar@:1000']},
                 'calls': [
-                    call('foo', 'hostX', 6379, None),
-                    call('bar', 'localhost', 1000, None)
+                    call('hostX', 6379, None),
+                    call('localhost', 1000, None)
                 ],
             },
             'old_and_new': {
@@ -236,10 +243,10 @@ class TestRedisCollector(CollectorTestCase):
                     ]
                 },
                 'calls': [
-                    call('foo', 'hostX', 6379, None),
-                    call('bar', 'localhost', 1000, None),
-                    call('6379', 'hostonly', 6379, None),
-                    call('1234', 'localhost', 1234, None),
+                    call('hostX', 6379, None),
+                    call('localhost', 1000, None),
+                    call('hostonly', 6379, None),
+                    call('localhost', 1234, None),
                 ],
             },
         }
@@ -283,26 +290,26 @@ class TestRedisCollector(CollectorTestCase):
             'total_commands_processed': 100,
         }
         expected_calls = [
-            call('nick1.process.connections_received', 200, precision=0,
-                 metric_type='GAUGE'),
-            call('nick1.process.commands_processed', 100, precision=0,
-                 metric_type='GAUGE'),
-            call('nick2.process.connections_received', 200, precision=0,
-                 metric_type='GAUGE'),
-            call('nick2.process.commands_processed', 100, precision=0,
-                 metric_type='GAUGE'),
-            call('nick3.process.connections_received', 200, precision=0,
-                 metric_type='GAUGE'),
-            call('nick3.process.commands_processed', 100, precision=0,
-                 metric_type='GAUGE'),
-            call('nick4.process.connections_received', 200, precision=0,
-                 metric_type='GAUGE'),
-            call('nick4.process.commands_processed', 100, precision=0,
-                 metric_type='GAUGE'),
-            call('6379.process.connections_received', 200, precision=0,
-                 metric_type='GAUGE'),
-            call('6379.process.commands_processed', 100, precision=0,
-                 metric_type='GAUGE'),
+            call('process.connections_received', 200, precision=0,
+                 metric_type='GAUGE', source='nick1'),
+            call('process.commands_processed', 100, precision=0,
+                 metric_type='GAUGE', source='nick1'),
+            call('process.connections_received', 200, precision=0,
+                 metric_type='GAUGE', source='nick2'),
+            call('process.commands_processed', 100, precision=0,
+                 metric_type='GAUGE', source='nick2'),
+            call('process.connections_received', 200, precision=0,
+                 metric_type='GAUGE', source='nick3'),
+            call('process.commands_processed', 100, precision=0,
+                 metric_type='GAUGE', source='nick3'),
+            call('process.connections_received', 200, precision=0,
+                 metric_type='GAUGE', source='nick4'),
+            call('process.commands_processed', 100, precision=0,
+                 metric_type='GAUGE', source='nick4'),
+            call('process.connections_received', 200, precision=0,
+                 metric_type='GAUGE', source='6379'),
+            call('process.commands_processed', 100, precision=0,
+                 metric_type='GAUGE', source='6379'),
         ]
 
         config = get_collector_config('RedisCollector', config_data)

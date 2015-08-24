@@ -40,6 +40,7 @@ import re
 try:
     import librato
     librato  # workaround for pyflakes issue #13
+    librato.Queue.MAX_MEASUREMENTS_PER_CHUNK = 500
 except ImportError:
     librato = None
 
@@ -66,6 +67,7 @@ class LibratoHandler(Handler):
         self.queue_max_size = int(self.config['queue_max_size'])
         self.queue_max_interval = int(self.config['queue_max_interval'])
         self.queue_max_timestamp = int(time.time() + self.queue_max_interval)
+        self.disable_force_flush = bool(self.config['disable_force_flush'])
 
         # If a user leaves off the ending comma, cast to a array for them
         include_filters = self.config['include_filters']
@@ -88,7 +90,8 @@ class LibratoHandler(Handler):
             'queue_max_interval': '',
             'include_filters': '',
             'include_period': '',
-            'enable_ssa': ''
+            'enable_ssa': '',
+            'disable_force_flush': ''
         })
 
         return config
@@ -107,7 +110,8 @@ class LibratoHandler(Handler):
             'queue_max_interval': 60,
             'include_filters': ['^.*'],
             'include_period': False,
-            'enable_ssa': False
+            'enable_ssa': False,
+            'disable_force_flush': False
         })
 
         return config
@@ -158,11 +162,12 @@ class LibratoHandler(Handler):
             self.log.debug("LibratoHandler: Skip %s, no include_filters match",
                            path)
 
-        if (len(self.queue) >= self.queue_max_size or
-                time.time() >= self.queue_max_timestamp):
-            self.log.debug("LibratoHandler: Sending batch size: %d",
-                           len(self.queue))
-            self._send()
+        if not self.disable_force_flush:
+            if (len(self.queue) >= self.queue_max_size or
+                    time.time() >= self.queue_max_timestamp):
+                self.log.debug("LibratoHandler: Sending batch size: %d",
+                               len(self.queue))
+                self._send()
 
     def flush(self):
         """Flush metrics in queue"""
