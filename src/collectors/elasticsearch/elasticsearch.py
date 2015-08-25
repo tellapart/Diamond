@@ -32,8 +32,20 @@ class ElasticSearchCollector(diamond.collector.Collector):
 
     def __init__(self, *args, **kwargs):
         super(ElasticSearchCollector, self).__init__(*args, **kwargs)
+        self._instances = {}
 
-        instance_list = self.config['instances']
+    def get_instances(self):
+        """Get the current instances to query for data.
+        """
+        instances = self.config['instances']
+        if callable(instances):
+            self.update_instance_cache(instances())
+        elif not self._instances:
+            self.update_instance_cache(instances)
+
+        return self._instances
+
+    def update_instance_cache(self, instance_list):
         if isinstance(instance_list, basestring):
             instance_list = [instance_list]
 
@@ -44,7 +56,6 @@ class ElasticSearchCollector(diamond.collector.Collector):
             # omitting the use of the alias in the metrics path
             instance_list.append('@%s:%s' % (host, port))
 
-        self.instances = {}
         for instance in instance_list:
             if '@' in instance:
                 (alias, hostport) = instance.split('@', 1)
@@ -58,7 +69,7 @@ class ElasticSearchCollector(diamond.collector.Collector):
                 host = hostport
                 port = 9200
 
-            self.instances[alias] = (host, int(port))
+            self._instances[alias] = (host, int(port))
 
     def get_default_config_help(self):
         config_help = super(ElasticSearchCollector,
@@ -219,7 +230,7 @@ class ElasticSearchCollector(diamond.collector.Collector):
     def collect_instance(self, alias, host, port):
         result = self._get(host, port, '_nodes/_local/stats?all=true', 'nodes')
         if not result:
-            return
+            return {}
 
         metrics = {}
         node = result['nodes'].keys()[0]
@@ -366,19 +377,20 @@ class ElasticSearchCollector(diamond.collector.Collector):
         if 'indices' in self.config['stats']:
             self.collect_instance_index_stats(host, port, metrics)
 
-        #
-        # all done, now publishing all metrics
-        for key in metrics:
-            full_key = key
-            if alias != '':
-                full_key = '%s.%s' % (alias, full_key)
-            self.publish(full_key, metrics[key])
+        return metrics
 
     def collect(self):
         if json is None:
             self.log.error('Unable to import json')
             return {}
 
-        for alias in sorted(self.instances):
-            (host, port) = self.instances[alias]
-            self.collect_instance(alias, host, port)
+        results = {}
+        instances = self.get_instances()
+        for alias in sorted(instances.iterkeys()):
+            host, port = instances[alias]
+            results[alias] = self.collect_instance(alias, host, port)
+
+        # Bulk publish
+        for alias, metrics in results.iteritems():
+            for key in metrics:
+                self.publish(key, metrics[key], source=alias)
