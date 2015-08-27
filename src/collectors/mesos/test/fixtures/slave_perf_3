@@ -26,6 +26,8 @@
       "mem_limit_bytes": 135266304,
       "mem_rss_bytes": 79015936,
       "mem_anon_bytes": 56788100,
+      "disk_limit_bytes": 10485760,
+      "disk_used_bytes": 2097152,
       "timestamp": 200
     }
   }
