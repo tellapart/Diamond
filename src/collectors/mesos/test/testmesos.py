@@ -22,17 +22,27 @@ from mesos import MesosCollector
 
 ################################################################################
 
-
 class TestMesosCollector(CollectorTestCase):
     STATE = {
         'attributes': {
             'group': 'test'
-        }
+        },
+        'frameworks': [{
+            'executors': [{
+                'id': 'thermos-1420503024922-docker-test-devel-hello_docker-0-46e0aa39-8691-414a-992c-919ea2d1003d',
+                'directory': '/tmp',
+                'resources': {
+                    'cpus': 10,
+                    'disk': 16
+                }
+            }]
+        }]
     }
 
     def setUp(self):
         config = get_collector_config('MesosCollector', {
             'hosts': 'localhost:8081',
+            'collect_disk_usage': False
         })
 
         self.collector = MesosCollector(config, None)
@@ -156,6 +166,58 @@ class TestMesosCollector(CollectorTestCase):
 
         self.assertPublishedMany(publish_mock, expected_metrics)
 
+    @patch.object(Collector, 'publish')
+    def test_task_indirect_disk_metrics(self, publish_mock):
+        fixtures = [StringIO("{}"),
+                    StringIO(json.dumps(self.STATE)),
+                    self.getFixture('slave_perf_3')]
+
+        patch_urlopen = patch('urllib2.urlopen',
+                              Mock(side_effect=lambda *args: fixtures.pop(0)))
+
+        patch_urlopen.start()
+        self.collector.collect()
+        patch_urlopen.stop()
+
+        expected_metrics = {
+            'job_resources_used_disk_percent': 20.0,
+            'job_resources_used_disk_mb': 2
+        }
+
+        self.assertPublishedMany(publish_mock, expected_metrics)
+
+    @patch.object(Collector, 'publish')
+    def test_task_direct_disk_metrics(self, publish_mock):
+        config = get_collector_config('MesosCollector', {
+            'hosts': 'localhost:8081',
+            'collect_disk_usage': True
+        })
+
+        self.collector = MesosCollector(config, None)
+
+        fixtures = [StringIO("{}"),
+                    StringIO(json.dumps(self.STATE)),
+                    self.getFixture('slave_perf_3')]
+
+        patch_urlopen = patch('urllib2.urlopen',
+                              Mock(side_effect=lambda *args: fixtures.pop(0)))
+
+        patch_communicate = patch(
+            'subprocess.Popen.communicate',
+            Mock(return_value=('4096\t/mnt/path\n', '')))
+
+        patch_communicate.start()
+        patch_urlopen.start()
+        self.collector.collect()
+        patch_urlopen.stop()
+        patch_communicate.stop()
+
+        expected_metrics = {
+            'job_resources_used_disk_percent': 25.0,
+            'job_resources_used_disk_mb': 4
+        }
+
+        self.assertPublishedMany(publish_mock, expected_metrics)
 
 ################################################################################
 if __name__ == "__main__":

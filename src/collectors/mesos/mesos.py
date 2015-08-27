@@ -23,7 +23,9 @@ Metrics are collected as:
 """
 
 import json
+from itertools import chain
 import re
+import subprocess
 import urllib2
 import diamond.collector
 
@@ -168,6 +170,8 @@ class MesosCollector(diamond.collector.Collector):
         config_help.update({
             'hosts': 'List of hosts, and ports to collect. Set a cluster by '
                      + ' prefixing the host:port with cluster@',
+            'collect_disk_usage': 'If true, directly collect disk usage stats '
+                                  + 'instead of relying on numbers from Mesos.'
             })
         return config_help
 
@@ -179,6 +183,7 @@ class MesosCollector(diamond.collector.Collector):
         config.update({
             'hosts': ['localhost:5050'],
             'path': 'mesos',
+            'collect_disk_usage': True
             })
         return config
 
@@ -238,11 +243,16 @@ class MesosCollector(diamond.collector.Collector):
         name = self._format_identifier(raw_name)
         self.publish(name, value, metric_type=metric_type)
 
-    def _publish_task_metrics(self, cluster, host, port):
+    def _publish_task_metrics(self, cluster, host, port, state):
         slave_data = self._fetch_data(host, port, 'monitor/statistics.json')
+        state_data = {
+            i['id']: i for i in chain.from_iterable(
+                f['executors'] for f in state['frameworks'])}
+
         for executor in slave_data:
             name = executor['executor_name']
             stats = executor['statistics']
+            executor_state = state_data.get(executor['executor_id'])
             if name == 'aurora.gc':
                 continue
             else:
@@ -286,13 +296,8 @@ class MesosCollector(diamond.collector.Collector):
             if mem_file is not None:
                 mem_file /= Size.MB
 
-            disk_limit = stats.get('disk_limit_bytes')
-            disk_used = stats.get('disk_used_bytes')
-
-            disk_used_mb = float(disk_used) / Size.MB if disk_used else None
-            disk_used_percent = None
-            if disk_limit and disk_used:
-                disk_used_percent = (float(disk_used) / float(disk_limit)) * 100
+            disk_used_mb, disk_used_percent = self._get_disk_usage(
+                stats, executor_state)
 
             metrics = {
                 'user_cpu': user_cpu,
@@ -306,6 +311,35 @@ class MesosCollector(diamond.collector.Collector):
                 'disk_mb': disk_used_mb
             }
             self._publish_metric_set(source, instance_id, **metrics)
+
+    def _get_disk_usage(self, stats, state):
+        """
+        Gets disk usage statistics
+        """
+        disk_limit = None
+        disk_used = None
+        if self.config.get('collect_disk_usage'):
+            directory = state.get('directory')
+            if directory:
+                command = ['du', '-s', '-k', directory]
+                try:
+                    proc = subprocess.Popen(command, stdout=subprocess.PIPE)
+                    out, _ = proc.communicate()
+
+                    disk_used = int(out.split('\t')[0]) * Size.KB
+                    disk_limit = state['resources']['disk'] * Size.MB
+                except Exception:
+                    self.log.exception('Unable to collect disk usage.')
+        else:
+            disk_limit = stats.get('disk_limit_bytes')
+            disk_used = stats.get('disk_used_bytes')
+
+        disk_used_mb = float(disk_used) / Size.MB if disk_used else None
+        disk_used_percent = None
+        if disk_limit and disk_used:
+            disk_used_percent = (float(disk_used) / float(disk_limit)) * 100
+
+        return disk_used_mb, disk_used_percent
 
     def _publish_metric_set(self, source, instance_id, **metrics):
         """
@@ -349,7 +383,7 @@ class MesosCollector(diamond.collector.Collector):
                     cluster = state['attributes'].get('group') or 'unknown'
 
                     # Publish task level metrics
-                    self._publish_task_metrics(cluster, host, port)
+                    self._publish_task_metrics(cluster, host, port, state)
             except Exception:
                 self.log.exception(
                     "Error retrieving Mesos metrics for (%s, %s).", host, port)
