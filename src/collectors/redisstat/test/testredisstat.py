@@ -88,8 +88,11 @@ class TestRedisCollector(CollectorTestCase):
                   'redis_git_dirty': 0,
                   'keyspace_hits': 0,
                   'rejected_connections': 10,
-                  'cmdstat_cluster': {'usec_per_call': 101, 'calls': 300}
-                  }
+                  'cmdstat_cluster': {
+                      'usec_per_call': 101,
+                      'calls': 300,
+                      'usec': 20
+                  }}
         data_2 = {'pubsub_channels': 1,
                   'used_memory_peak_human': '1700.71K',
                   'bgrewriteaof_in_progress': 4,
@@ -134,8 +137,16 @@ class TestRedisCollector(CollectorTestCase):
                   'redis_git_dirty': 0,
                   'keyspace_hits': 5700,
                   'rejected_connections': 25,
-                  'cmdstat_cluster': {'usec_per_call': 101, 'calls': 378}
-                  }
+                  'cmdstat_cluster': {
+                      'usec_per_call': 101,
+                      'calls': 378,
+                      'usec': 120,
+                      'p250': 81,
+                      'p500': 91,
+                      'p900': 122,
+                      'p990': 191,
+                      'p999': 253
+                  }}
 
         patch_collector = patch.object(RedisCollector, '_get_info',
                                        Mock(return_value=data_1))
@@ -182,7 +193,13 @@ class TestRedisCollector(CollectorTestCase):
                    'keyspace.hits': 5700,
                    'clients.rejected_connections': 15,
                    'cmdstat.cluster.usec_per_call': 101,
-                   'cmdstat.cluster.calls': 78
+                   'cmdstat.cluster.usec_per_call_p250': 81,
+                   'cmdstat.cluster.usec_per_call_p500': 91,
+                   'cmdstat.cluster.usec_per_call_p900': 122,
+                   'cmdstat.cluster.usec_per_call_p990': 191,
+                   'cmdstat.cluster.usec_per_call_p999': 253,
+                   'cmdstat.cluster.calls': 78,
+                   'cmdstat.cluster.usec': 100
                    }
 
         self.assertPublishedMany(publish_mock, metrics)

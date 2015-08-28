@@ -38,6 +38,7 @@ If not specified the port will be used.
 """
 
 import diamond.collector
+import itertools
 import time
 
 try:
@@ -59,15 +60,6 @@ class RedisCollector(diamond.collector.Collector):
              'clients.rejected_connections': 'rejected_connections',
              'clients.biggest_input_buf': 'client_biggest_input_buf',
              'clients.longest_output_list': 'client_longest_output_list',
-             'cmdstat.cluster.usec_per_call': ('cmdstat_cluster', 'usec_per_call'),
-             'cmdstat.cluster.usec': ('cmdstat_cluster', 'usec'),
-             'cmdstat.cluster.calls': ('cmdstat_cluster', 'calls'),
-             'cmdstat.info.usec_per_call': ('cmdstat_info', 'usec_per_call'),
-             'cmdstat.info.usec': ('cmdstat_info', 'usec'),
-             'cmdstat.info.calls': ('cmdstat_info', 'calls'),
-             'cmdstat.ping.usec_per_call': ('cmdstat_ping', 'usec_per_call'),
-             'cmdstat.ping.usec': ('cmdstat_ping', 'usec'),
-             'cmdstat.ping.calls': ('cmdstat_ping', 'calls'),
              'cpu.parent.sys': 'used_cpu_sys',
              'cpu.children.sys': 'used_cpu_sys_children',
              'cpu.parent.user': 'used_cpu_user',
@@ -91,19 +83,18 @@ class RedisCollector(diamond.collector.Collector):
              'pubsub.patterns': 'pubsub_patterns',
              'repl.master_offset': 'master_repl_offset',
              'slaves.connected': 'connected_slaves'}
+
+    _CMDSTAT = 'cmdstat'
+    _NTILES = ('p250', 'p500', 'p900', 'p990', 'p999')
+    _CMDMETRICS = ('usec', 'calls', 'usec_per_call') + _NTILES
+
     _RENAMED_KEYS = {'last_save.changes_since': 'rdb_changes_since_last_save',
                      'last_save.time': 'rdb_last_save_time'}
 
     # Set of statistics that require derivative calculations.
-    _DERIVATIVES = {
-        'clients.rejected_connections',
-        'cmdstat.cluster.usec',
-        'cmdstat.cluster.calls',
-        'cmdstat.info.usec',
-        'cmdstat.info.calls',
-        'cmdstat.ping.usec',
-        'cmdstat.ping.calls',
-    }
+    _DERIVATIVES = {'clients.rejected_connections'}
+
+    _CMDSTAT_DERIVATIVES = {'usec', 'calls'}
 
     def __init__(self, *args, **kwargs):
         super(RedisCollector, self).__init__(*args, **kwargs)
@@ -178,7 +169,9 @@ class RedisCollector(diamond.collector.Collector):
             'auth': 'Password?',
             'databases': 'how many database instances to collect',
             'instances': "Redis addresses, comma separated, syntax:"
-            + " nick1@host:port, nick2@:port or nick3@host"
+            + " nick1@host:port, nick2@:port or nick3@host",
+            'reset_stats': 'If true, execute CONFIG RESETSTAT against each '
+                           'endpoint after collection.'
         })
         return config_help
 
@@ -199,6 +192,7 @@ class RedisCollector(diamond.collector.Collector):
             'databases': self._DATABASE_COUNT,
             'path': 'redis',
             'instances': [],
+            'reset_stats': False
         })
         return config
 
@@ -260,7 +254,6 @@ class RedisCollector(diamond.collector.Collector):
 :rtype: dict
 
         """
-
         client = self._client(host, port, auth)
         if client is None:
             return None
@@ -268,8 +261,41 @@ class RedisCollector(diamond.collector.Collector):
         # Pull full stats. Use execute_command for backwards compatibility
         # with older redis clients.
         info = client.execute_command('INFO', 'all')
-        del client
         return info
+
+    def _reset_stats(self, host, port, auth):
+        """Resets statistics on the specified Redis instance
+
+:param str host: redis host
+:param int port: redis port
+:rtype: dict
+
+        """
+        client = self._client(host, port, auth)
+        if client is None:
+            return None
+
+        # Reset statistics. Use execute_command for backwards compatibility
+        # with older redis clients.
+        client.execute_command('CONFIG RESETSTAT')
+
+    def _create_cmdstat_keys(self, info):
+        """Creates all keys for commandstats.
+
+:param dict info: information object returned by Redis.
+:rtype: dict
+
+        """
+        cmdstats = [
+            k.split('_')[1] for k in info.keys() if k.startswith(self._CMDSTAT)]
+
+        def make_name(met):
+            return 'usec_per_call_%s' % met if met in self._NTILES else met
+
+        return {
+            '%s.%s.%s' % (self._CMDSTAT, op, make_name(met)):
+                ('%s_%s' % (self._CMDSTAT, op), met)
+                for op, met in itertools.product(cmdstats, self._CMDMETRICS)}
 
     def collect_instance(self, host, port, auth):
         """Collect metrics from a single Redis instance
@@ -278,9 +304,13 @@ class RedisCollector(diamond.collector.Collector):
 :param int port: redis port
 
         """
-
         # Connect to redis and get the info
         info = self._get_info(host, port, auth)
+
+        # If configured, reset stats on the host immediately after collection.
+        if self.config.get('reset_stats'):
+            self._reset_stats(host, port, auth)
+
         if info is None:
             return
 
@@ -289,8 +319,9 @@ class RedisCollector(diamond.collector.Collector):
         data = dict()
 
         # Iterate over the top level keys
-        for key in self._KEYS:
-            info_key = self._KEYS[key]
+        items = dict(self._KEYS, **self._create_cmdstat_keys(info))
+        for key in items:
+            info_key = items[key]
             if isinstance(info_key, basestring):
                 if info_key in info:
                     data[key] = info[info_key]
@@ -322,9 +353,20 @@ class RedisCollector(diamond.collector.Collector):
 
         return data
 
+    def _is_derivative(self, name):
+        """Determine whether or not to calculate a derivative for the metric.
+        """
+        if name in self._DERIVATIVES:
+            return True
+
+        parts = name.split('.')
+        if parts[0] == self._CMDSTAT and parts[-1] in self._CMDSTAT_DERIVATIVES:
+            return True
+
+        return False
+
     def collect(self):
         """Collect the stats from the redis instances and publish them.
-
         """
         if redis is None:
             self.log.error('Unable to import module redis')
@@ -344,7 +386,7 @@ class RedisCollector(diamond.collector.Collector):
         # Publish all data in bulk.
         for nick, data in results.iteritems():
             for key in data:
-                if key in self._DERIVATIVES:
+                if self._is_derivative(key):
                     value = self.derivative(
                                 name=key,
                                 new=data[key],
