@@ -34,7 +34,10 @@ class TestMesosCollector(CollectorTestCase):
                 'resources': {
                     'cpus': 10,
                     'disk': 16
-                }
+                },
+                'tasks': [{
+                    'executor_id': u'thermos-1420503024922-docker-test-devel-hello_docker-0-46e0aa39-8691-414a-992c-919ea2d1003d'
+                }]
             }]
         }]
     }

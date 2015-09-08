@@ -320,7 +320,9 @@ class MesosCollector(diamond.collector.Collector):
         disk_used = None
         if self.config.get('collect_disk_usage'):
             directory = state.get('directory')
-            if directory:
+            # If there are no active tasks, limits from Mesos are not correct.
+            tasks = state.get('tasks')
+            if directory and tasks:
                 command = ['du', '-s', '-k', directory]
                 try:
                     proc = subprocess.Popen(command, stdout=subprocess.PIPE)
