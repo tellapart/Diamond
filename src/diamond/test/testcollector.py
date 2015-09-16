@@ -195,3 +195,25 @@ class BaseCollectorTest(unittest.TestCase):
         config['collectors']['default']['hostname'] = 'exit 1'
         c = Collector(config, [])
         self.assertEquals('test_value', c.get_hostname())
+
+    def test_SourceMerge(self):
+        reset_hostname_cache()
+        config = configobj.ConfigObj()
+        config['server'] = {}
+        config['server']['collectors_config_path'] = ''
+        config['collectors'] = {}
+        config['collectors']['default'] = {
+            'hostname': 'custom.localhost',
+        }
+        c = Collector(config, [])
+        self.assertEquals('custom.localhost', c.get_hostname())
+        self.assertEquals('custom.localhost', c.construct_host(None))
+        self.assertEquals('test', c.construct_host('test'))
+
+        config['collectors']['default']['merge_sources'] = True
+        c = Collector(config, [])
+        self.assertEquals('custom.localhost.test', c.construct_host('test'))
+
+        config['collectors']['default']['merge_sources_separator'] = '!'
+        c = Collector(config, [])
+        self.assertEquals('custom.localhost!test', c.construct_host('test'))

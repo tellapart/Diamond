@@ -247,10 +247,10 @@ class Collector(object):
             # Defaults options for all Collectors
 
             # Uncomment and set to hardcode a hostname for the collector path
-            # Keep in mind, periods are seperators in graphite
+            # Keep in mind, periods are separators in graphite
             # 'hostname': 'my_custom_hostname',
 
-            # If you perfer to just use a different way of calculating the
+            # If you prefer to just use a different way of calculating the
             # hostname
             # Uncomment and set this to one of these values:
             # fqdn_short  = Default. Similar to hostname -s
@@ -295,6 +295,12 @@ class Collector(object):
 
             # Blacklist of metrics to let through
             'metrics_blacklist': None,
+
+            # If true, merge the hostname + provided source.
+            'merge_sources': False,
+
+            # The separator character to use if merging sources.
+            'merge_sources_separator': '.'
         }
 
     def get_stats_for_upload(self, config=None):
@@ -356,7 +362,7 @@ class Collector(object):
         else:
             suffix = None
 
-        hostname = source or get_hostname(self.config)
+        hostname = self.construct_host(source)
         if hostname is not None:
             if prefix:
                 prefix = ".".join((prefix, hostname))
@@ -405,7 +411,7 @@ class Collector(object):
 
         # Create Metric
         try:
-            host = source or self.get_hostname()
+            host = self.construct_host(source)
             metric = Metric(path, value, raw_value=raw_value, timestamp=None,
                             precision=precision, host=host,
                             metric_type=metric_type, ttl=ttl, interval=interval)
@@ -416,6 +422,16 @@ class Collector(object):
 
         # Publish Metric
         self.publish_metric(metric)
+
+    def construct_host(self, source):
+        """Create the hostname based on configuration settings.
+        """
+        if self.config['merge_sources']:
+            separator = self.config['merge_sources_separator']
+            return separator.join(
+                i for i in (self.get_hostname(), source) if i)
+        else:
+            return source or self.get_hostname()
 
     def publish_metric(self, metric):
         """
