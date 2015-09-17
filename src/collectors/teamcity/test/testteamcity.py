@@ -8,8 +8,6 @@ try:
 except ImportError:
   from StringIO import StringIO
 
-import json
-
 from test import CollectorTestCase
 from test import get_collector_config
 from test import unittest
@@ -22,7 +20,7 @@ from teamcity import TeamCityCollector
 
 ################################################################################
 
-class TestMesosCollector(CollectorTestCase):
+class TestTeamCityCollector(CollectorTestCase):
 
     def setUp(self):
         config = get_collector_config('TeamCityCollector', {
@@ -70,3 +68,7 @@ class TestMesosCollector(CollectorTestCase):
         }
 
         self.assertPublishedMany(publish_mock, published_metrics)
+
+################################################################################
+if __name__ == "__main__":
+    unittest.main()
