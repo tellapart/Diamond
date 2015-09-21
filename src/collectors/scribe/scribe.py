@@ -8,7 +8,6 @@ A collector for publishing Scribe metrics from a local instance.
  * A local install of scribe_ctrl.
 """
 
-import numbers
 import subprocess
 import diamond.collector
 
@@ -41,7 +40,7 @@ class ScribeCollector(diamond.collector.Collector):
         config = super(ScribeCollector, self).get_default_config()
         config.update({
             'path': 'scribe',
-            'ports': 1464,
+            'ports': '1464',
             'merge_sources': True,
             'bin': 'scribe_ctrl'
         })
@@ -83,10 +82,10 @@ class ScribeCollector(diamond.collector.Collector):
         Collects local scribe metrics for all configured ports.
         """
         ports = self.config['ports']
-        if isinstance(ports, numbers.Number):
+        if isinstance(ports, basestring):
             ports = [ports]
-        else:
-            ports = [int(p) for p in ports]
+
+        ports = [int(p) for p in ports]
 
         for p in ports:
             metrics = self._get_metrics(p)

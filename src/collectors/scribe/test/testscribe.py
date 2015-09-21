@@ -24,7 +24,7 @@ class TestScribeCollector(CollectorTestCase):
 
     def setUp(self):
         config = get_collector_config('ScribeCollector', {
-            'ports': 1464,
+            'ports': '1464',
             'bin': 'true'
         })
 
