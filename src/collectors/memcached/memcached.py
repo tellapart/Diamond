@@ -30,6 +30,12 @@ import socket
 import re
 
 
+class Protocol(object):
+    QUIT = 'quit\r\n'
+    STATS = 'stats\r\n'
+    STATS_RESET = 'stats reset\r\n'
+
+
 class MemcachedCollector(diamond.collector.Collector):
     GAUGES = [
         'bytes',
@@ -44,6 +50,9 @@ class MemcachedCollector(diamond.collector.Collector):
         'hash_is_expanding',
         'uptime'
     ]
+    GAUGES_RE = [
+        re.compile('^latency:')
+    ]
 
     def get_default_config_help(self):
         config_help = super(MemcachedCollector, self).get_default_config_help()
@@ -53,6 +62,8 @@ class MemcachedCollector(diamond.collector.Collector):
             + " of possibilities. Leave unset to publish all.",
             'hosts': "List of hosts, and ports to collect. Set an alias by "
             + " prefixing the host:port with alias@",
+            'reset_stats': "If true, execute 'stats reset' against each "
+                           "endpoint after collection."
         })
         return config_help
 
@@ -71,24 +82,42 @@ class MemcachedCollector(diamond.collector.Collector):
             #'publish': ''
 
             # Connection settings
-            'hosts': ['localhost:11211']
+            'hosts': ['localhost:11211'],
+            'reset_stats': False
         })
         return config
+
+    def get_socket(self, host, port, timeout=5):
+        if port is None:
+            sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+            sock.connect(host)
+        else:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.connect((host, int(port)))
+
+        sock.settimeout(timeout)
+        return sock
 
     def get_raw_stats(self, host, port):
         data = ''
         # connect
         try:
-            if port is None:
-                sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-                sock.connect(host)
-            else:
-                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                sock.connect((host, int(port)))
+            sock = self.get_socket(host, port)
             # request stats
-            sock.send('stats\n')
-            # something big enough to get whatever is sent back
-            data = sock.recv(4096)
+
+            commands = [Protocol.STATS]
+            if self.config['reset_stats']:
+                self.log.debug('Resetting statistics on %s:%s', host, port)
+                commands.append(Protocol.STATS_RESET)
+
+            commands.append(Protocol.QUIT)
+            sock.sendall(''.join(commands))
+            while True:
+                d = sock.recv(4096)
+                if not d:
+                    break
+                data += d
+
         except socket.error:
             self.log.exception('Failed to get stats from %s:%s',
                                host, port)
@@ -132,6 +161,17 @@ class MemcachedCollector(diamond.collector.Collector):
 
         return stats
 
+    def is_gauge(self, stat):
+        # Everything is a gauge if stats are being reset on each pass.
+        if self.config['reset_stats']:
+            return True
+        if stat in MemcachedCollector.GAUGES:
+            return True
+        for gauge_re in MemcachedCollector.GAUGES_RE:
+            if gauge_re.search(stat):
+                return True
+        return False
+
     def collect(self):
         hosts = self.config.get('hosts')
 
@@ -158,14 +198,19 @@ class MemcachedCollector(diamond.collector.Collector):
                 if stat in stats:
 
                     # we have it
-                    if stat in self.GAUGES:
-                        self.publish_gauge(alias + "." + stat, stats[stat])
+                    formatted_name = '.'.join((alias, stat.replace(':', '.')))
+                    if self.is_gauge(stat):
+                        value = stats[stat]
                     else:
-                        self.publish_counter(alias + "." + stat, stats[stat])
+                        value = self.derivative(
+                            name=formatted_name,
+                            new=stats[stat],
+                            time_delta=False)
 
+                    self.publish_gauge(formatted_name, value)
                 else:
 
-                    # we don't, must be somehting configured in publish so we
+                    # we don't, must be something configured in publish so we
                     # should log an error about it
                     self.log.error("No such key '%s' available, issue 'stats' "
                                    "for a full list", stat)
