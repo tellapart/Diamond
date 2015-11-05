@@ -157,6 +157,38 @@ def str_to_bool(value):
     return value
 
 
+class CollectionResult(object):
+    """
+    Represents the result of a collection operation.
+    """
+
+    def __init__(self, success=True, timestamp=None, children=None, alias=None,
+                 error=None):
+        """
+        Args:
+            success - Whether or not collection succeeded.
+            timestamp - The optional time of collection.
+            children - An optional list of child CollectionResults.
+            alias - An optional alias for the CollectionResult.
+            error - The specific error that occured.
+        """
+        self._success = success
+        self.timestamp = timestamp or time.time()
+        self.children = children or []
+        self.alias = alias or 'default'
+        self.error = error
+
+    @property
+    def success(self):
+        """
+        Returns whether or not the overall collection was a success.
+        """
+        if not self.children:
+            return self._success
+
+        return all(c.success for c in self.children)
+
+
 class Collector(object):
     """
     The Collector class is a base class for all metric collectors.
@@ -172,6 +204,8 @@ class Collector(object):
         self.name = self.__class__.__name__
         self.handlers = handlers
         self.last_values = {}
+
+        self.last_result = None
 
         # Get Collector class
         cls = self.__class__
@@ -329,6 +363,22 @@ class Collector(object):
                                           None,
                                           int(self.config['splay']),
                                           int(self.config['interval']))}
+
+    def get_last_result(self):
+        """Gets the last viable result.
+
+        If the last result hasn't been updated in 3x the polling interval, it's
+        possible something has gone wrong with the scheduling.
+        """
+        if not self.last_result:
+            return None
+
+        interval = int(self.config['interval'])
+        now = time.time()
+        if self.last_result.timestamp < (now - interval * 3):
+            return None
+        else:
+            return self.last_result
 
     def get_metric_path(self, name, instance=None, source=None):
         """
@@ -512,7 +562,7 @@ class Collector(object):
                 self.collect_running = True
 
                 # Collect Data
-                self.collect()
+                self.last_result = self.collect()
 
                 end_time = time.time()
 
@@ -524,7 +574,9 @@ class Collector(object):
 
             except Exception:
                 # Log Error
-                self.log.error(traceback.format_exc())
+                error = traceback.format_exc()
+                self.log.error(error)
+                self.last_result = CollectionResult(success=False, error=error)
         finally:
             self.collect_running = False
             # After collector run, invoke a flush

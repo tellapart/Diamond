@@ -38,6 +38,7 @@ class Server(object):
         self.modules = {}
         self.tasks = {}
         self.collector_paths = []
+        self.collectors = {}
         # Initialize Scheduler
         self.scheduler = scheduler()
 
@@ -251,6 +252,21 @@ class Server(object):
         # Return Collector classes
         return collectors
 
+    def init_collectors(self, collectors, interval_task=True):
+        """
+        Initialize all collectors
+        """
+        new_collectors = {}
+        for name, cls in collectors.items():
+            # Initialize Collector
+            c = self.init_collector(cls)
+            # Schedule Collector
+            self.schedule_collector(c, interval_task=interval_task)
+
+            new_collectors[name] = c
+
+        self.collectors = new_collectors
+
     def init_collector(self, cls):
         """
         Initialize collector
@@ -357,11 +373,7 @@ class Server(object):
         collectors = self.load_collectors(self.collector_paths)
 
         # Setup Collectors
-        for cls in collectors.values():
-            # Initialize Collector
-            c = self.init_collector(cls)
-            # Schedule Collector
-            self.schedule_collector(c)
+        self.init_collectors(collectors)
 
         # Start main loop
         self.mainloop(reload=reload, async=async)
@@ -404,13 +416,7 @@ class Server(object):
                 if not item.lower() in file.lower():
                     del collectors[item]
 
-        # Setup Collectors
-        for cls in collectors.values():
-            # Initialize Collector
-            c = self.init_collector(cls)
-
-            # Schedule collector
-            self.schedule_collector(c, False)
+        self.init_collectors(collectors, interval_task=False)
 
         # Start main loop
         self.mainloop(False)
@@ -443,11 +449,7 @@ class Server(object):
                     # Load collectors
                     collectors = self.load_collectors(self.collector_paths)
                     # Setup any Collectors that were loaded
-                    for cls in collectors.values():
-                        # Initialize Collector
-                        c = self.init_collector(cls)
-                        # Schedule Collector
-                        self.schedule_collector(c)
+                    self.init_collectors(collectors)
 
                     # Reset reload timer
                     time_since_reload = 0
