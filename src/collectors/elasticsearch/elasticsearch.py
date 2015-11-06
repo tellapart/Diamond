@@ -15,7 +15,10 @@ parameter the instance alias will be appended to the
 
 import urllib2
 import re
-from diamond.collector import str_to_bool
+from diamond.collector import (
+    CollectionResult,
+    str_to_bool
+)
 
 try:
     import json
@@ -381,8 +384,9 @@ class ElasticSearchCollector(diamond.collector.Collector):
 
     def collect(self):
         if json is None:
-            self.log.error('Unable to import json')
-            return {}
+            error = 'Unable to import json'
+            self.log.error(error)
+            return CollectionResult(success=False, error=error)
 
         results = {}
         instances = self.get_instances()
@@ -394,3 +398,8 @@ class ElasticSearchCollector(diamond.collector.Collector):
         for alias, metrics in results.iteritems():
             for key in metrics:
                 self.publish(key, metrics[key], source=alias)
+
+        return CollectionResult(
+            children=[
+                CollectionResult(success=bool(v), alias=k)
+                for k, v in results.iteritems()])

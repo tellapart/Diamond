@@ -36,7 +36,7 @@ If not specified the port will be used.
 
 
 """
-
+from diamond.collector import CollectionResult
 import diamond.collector
 import itertools
 import time
@@ -369,17 +369,20 @@ class RedisCollector(diamond.collector.Collector):
         """Collect the stats from the redis instances and publish them.
         """
         if redis is None:
-            self.log.error('Unable to import module redis')
-            return {}
+            error = 'Unable to import module redis'
+            self.log.error(error)
+            return CollectionResult(success=False, error=error)
 
         instances = self.get_instances()
         results = {}
+        failures = {}
         # TODO(george): Add facility for parallel collection.
         for nick in instances.keys():
             try:
                 (host, port, auth) = instances[nick]
                 results[nick] = self.collect_instance(host, int(port), auth)
-            except Exception:
+            except Exception as ex:
+                failures[nick] = ex
                 self.log.exception(
                     "Failed to collect instance data for: %s", nick)
 
@@ -402,3 +405,12 @@ class RedisCollector(diamond.collector.Collector):
 
         # Remove any unused clients from the cache.
         self._purge_clients(instances.values())
+
+        s_result = [
+            CollectionResult(success=True, alias=k)
+            for k, _ in results.iteritems()]
+        f_result = [
+            CollectionResult(success=False, alias=k, error=v)
+            for k, v in failures.iteritems()]
+
+        return CollectionResult(children=s_result+f_result)
