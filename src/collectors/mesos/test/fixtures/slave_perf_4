@@ -1,0 +1,42 @@
+[
+  {
+    "executor_id": "aurora.gc",
+    "executor_name": "aurora.gc",
+    "framework_id": "20141124-225644-119646400-5050-17499-0000",
+    "source": "aurora.local",
+    "statistics": {
+      "cpus_limit": 0.19,
+      "cpus_system_time_secs": 68.86,
+      "cpus_user_time_secs": 44.35,
+      "mem_limit_bytes": 133169152,
+      "mem_rss_bytes": 39452672,
+      "timestamp": 1420580183.6592
+    }
+  },
+    {
+        "executor_id": "thermos-1450378044027-test-devel-hello_world-0-af8ed61c-dd01-493b-95e5-d6126f6161a6",
+        "executor_name": "aurora.task",
+        "framework_id": "203fb4b5-d8c7-4089-9bc2-20fc2ae2caf0-0000",
+        "source": "test.devel.hello_world.0",
+        "statistics": {
+            "cpus_limit": 1.25,
+            "cpus_system_time_secs": 0.92,
+            "cpus_user_time_secs": 1.71,
+            "disk_limit_bytes": 16777216,
+            "disk_used_bytes": 4194304,
+            "mem_anon_bytes": 49680384,
+            "mem_cache_bytes": 9457664,
+            "mem_critical_pressure_counter": 0,
+            "mem_file_bytes": 9457664,
+            "mem_limit_bytes": 1207959552,
+            "mem_low_pressure_counter": 0,
+            "mem_mapped_file_bytes": 3899392,
+            "mem_medium_pressure_counter": 0,
+            "mem_rss_bytes": 49680384,
+            "mem_swap_bytes": 0,
+            "mem_total_bytes": 59600896,
+            "mem_unevictable_bytes": 0,
+            "timestamp": 1450378958.10675
+        }
+    }
+]

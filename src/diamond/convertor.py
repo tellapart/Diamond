@@ -57,21 +57,21 @@ class binary:
 
         if unit in ['byte', 'B']:
             return self.byte(value=value)
-        if unit in ['kilobyte', 'kB', 'KiB']:
+        if unit in ['kilobyte', 'kB', 'KiB', 'kb']:
             return self.kilobyte(value=value)
-        if unit in ['megabyte', 'MB', 'MiB', 'Mbyte']:
+        if unit in ['megabyte', 'MB', 'MiB', 'Mbyte', 'mb']:
             return self.megabyte(value=value)
-        if unit in ['gigabyte', 'GB', 'GiB']:
+        if unit in ['gigabyte', 'GB', 'GiB', 'gb']:
             return self.gigabyte(value=value)
-        if unit in ['terabyte', 'TB', 'TiB']:
+        if unit in ['terabyte', 'TB', 'TiB', 'tb']:
             return self.terabyte(value=value)
-        if unit in ['petabyte', 'PB', 'PiB']:
+        if unit in ['petabyte', 'PB', 'PiB', 'pb']:
             return self.petabyte(value=value)
-        if unit in ['exabyte', 'EB', 'EiB']:
+        if unit in ['exabyte', 'EB', 'EiB', 'eb']:
             return self.exabyte(value=value)
-        if unit in ['zettabyte', 'ZB', 'ZiB']:
+        if unit in ['zettabyte', 'ZB', 'ZiB', 'zb']:
             return self.zettabyte(value=value)
-        if unit in ['yottabyte', 'YB', 'YiB']:
+        if unit in ['yottabyte', 'YB', 'YiB', 'yb']:
             return self.yottabyte(value=value)
 
         raise NotImplementedError("unit %s" % unit)

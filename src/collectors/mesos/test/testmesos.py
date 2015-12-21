@@ -39,8 +39,14 @@ class TestMesosCollector(CollectorTestCase):
                     'executor_id': u'thermos-1420503024922-docker-test-devel-hello_docker-0-46e0aa39-8691-414a-992c-919ea2d1003d'
                 }]
             }]
-        }]
+        }],
+        'version': '0.22.1'
     }
+
+    def get_state(self, major, minor, point):
+        state = self.STATE.copy()
+        state['version'] = '%s.%s.%s' % (major, minor, point)
+        return state
 
     def setUp(self):
         config = get_collector_config('MesosCollector', {
@@ -110,11 +116,11 @@ class TestMesosCollector(CollectorTestCase):
     @patch.object(Collector, 'publish')
     def test_task_metrics(self, publish_mock):
         fixtures = [StringIO("{}"),
-                    StringIO(json.dumps(self.STATE)),
+                    StringIO(json.dumps(self.get_state(0, 22, 1))),
                     self.getFixture('slave_perf_1'),
 
                     StringIO("{}"),
-                    StringIO(json.dumps(self.STATE)),
+                    StringIO(json.dumps(self.get_state(0, 22, 1))),
                     self.getFixture('slave_perf_2')]
         patch_urlopen = patch('urllib2.urlopen',
                               Mock(side_effect=lambda *args: fixtures.pop(0)))
@@ -151,7 +157,7 @@ class TestMesosCollector(CollectorTestCase):
     @patch.object(Collector, 'publish')
     def test_task_memory_metrics(self, publish_mock):
         fixtures = [StringIO("{}"),
-                    StringIO(json.dumps(self.STATE)),
+                    StringIO(json.dumps(self.get_state(0, 22, 1))),
                     self.getFixture('slave_perf_3')]
 
         patch_urlopen = patch('urllib2.urlopen',
@@ -172,7 +178,7 @@ class TestMesosCollector(CollectorTestCase):
     @patch.object(Collector, 'publish')
     def test_task_indirect_disk_metrics(self, publish_mock):
         fixtures = [StringIO("{}"),
-                    StringIO(json.dumps(self.STATE)),
+                    StringIO(json.dumps(self.get_state(0, 22, 1))),
                     self.getFixture('slave_perf_3')]
 
         patch_urlopen = patch('urllib2.urlopen',
@@ -199,7 +205,7 @@ class TestMesosCollector(CollectorTestCase):
         self.collector = MesosCollector(config, None)
 
         fixtures = [StringIO("{}"),
-                    StringIO(json.dumps(self.STATE)),
+                    StringIO(json.dumps(self.get_state(0, 22, 1))),
                     self.getFixture('slave_perf_3')]
 
         patch_urlopen = patch('urllib2.urlopen',
@@ -221,6 +227,52 @@ class TestMesosCollector(CollectorTestCase):
         }
 
         self.assertPublishedMany(publish_mock, expected_metrics)
+
+    @patch.object(Collector, 'publish')
+    def test_unit_conversion(self, publish_mock):
+        config = get_collector_config('MesosCollector', {
+            'hosts': 'localhost:8081',
+            'collect_disk_usage': False,
+            'byte_unit': ['kb']
+        })
+
+        self.collector = MesosCollector(config, None)
+
+        fixtures = [StringIO("{}"),
+                    StringIO(json.dumps(self.get_state(0, 24, 0))),
+                    self.getFixture('slave_perf_4')]
+
+        patch_urlopen = patch('urllib2.urlopen',
+                              Mock(side_effect=lambda *args: fixtures.pop(0)))
+
+        patch_urlopen.start()
+        self.collector.collect()
+        patch_urlopen.stop()
+
+        expected_metrics = {
+            'job_resources_used_disk_percent': 25.0,
+            'job_resources_used_disk_kb': 4096,
+            'job_resources_used_mem_anon_kb': 48516,
+            'job_resources_used_mem_cache_kb': 9236,
+            'job_resources_used_mem_critical_pressure_counter': 0,
+            'job_resources_used_mem_file_kb': 9236,
+            'job_resources_used_mem_limit_kb': 1179648,
+            'job_resources_used_mem_low_pressure_counter': 0,
+            'job_resources_used_mem_mapped_file_kb': 3808,
+            'job_resources_used_mem_medium_pressure_counter': 0,
+            'job_resources_used_mem_rss_kb': 48516,
+            'job_resources_used_mem_swap_kb': 0,
+            'job_resources_used_mem_total_kb': 58204,
+            'job_resources_used_mem_unevictable_kb': 0,
+        }
+
+        self.assertPublishedMany(publish_mock, expected_metrics)
+
+    def test_test(self):
+        major, minor, point = MesosCollector.get_mesos_version(self.STATE)
+        self.assertEqual(major, 0)
+        self.assertEqual(minor, 22)
+        self.assertEqual(point, 1)
 
 ################################################################################
 if __name__ == "__main__":
