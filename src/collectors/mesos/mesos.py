@@ -183,7 +183,9 @@ class MesosCollector(diamond.collector.Collector):
         config.update({
             'hosts': ['localhost:5050'],
             'path': 'mesos',
-            'collect_disk_usage': True
+            'collect_disk_usage': True,
+            # Default numeric output.
+            'byte_unit': ['mb']
             })
         return config
 
@@ -243,6 +245,13 @@ class MesosCollector(diamond.collector.Collector):
         name = self._format_identifier(raw_name)
         self.publish(name, value, metric_type=metric_type)
 
+    def _merge_dicts(self, *args):
+        result = {}
+        for a in args:
+            result.update(a)
+
+        return result
+
     def _publish_task_metrics(self, cluster, host, port, state):
         slave_data = self._fetch_data(host, port, 'monitor/statistics.json')
         state_data = {
@@ -261,33 +270,68 @@ class MesosCollector(diamond.collector.Collector):
                 base_job_name = job_name[0:job_name.rindex('.')]
                 source = cluster + '.' + base_job_name
 
-            # Calculate CPU delta
-            user_cpu = self._calculate_derivative_metric(source,
-                                                         instance_id,
-                                                         stats,
-                                                         'cpus_user_time_secs',
-                                                         'user_cpu')
-            sys_cpu = self._calculate_derivative_metric(source,
-                                                        instance_id,
-                                                        stats,
-                                                        'cpus_system_time_secs',
-                                                        'sys_cpu')
-            if 'cpus_throttled_time_secs' in stats:
-                time_throttled = self._calculate_derivative_metric(source,
-                                                                   instance_id,
-                                                                   stats,
-                                                                   'cpus_throttled_time_secs',
-                                                                   'time_throttled')
-            else:
-                time_throttled = 0
+            cpu = self._get_cpu_metrics(source, instance_id, stats)
+            memory = self._get_memory_metrics(stats, state)
+            disk = self._get_disk_metrics(stats, executor_state)
 
-            total_cpu = user_cpu + sys_cpu
+            metrics = self._merge_dicts(cpu, memory, disk)
+            self._publish_metric_set(source, instance_id, **metrics)
+
+    def _get_cpu_metrics(self, source, instance_id, stats):
+        # Calculate CPU delta
+        user_cpu = self._calculate_derivative_metric(source,
+                                                     instance_id,
+                                                     stats,
+                                                     'cpus_user_time_secs',
+                                                     'user_cpu')
+        sys_cpu = self._calculate_derivative_metric(source,
+                                                    instance_id,
+                                                    stats,
+                                                    'cpus_system_time_secs',
+                                                    'sys_cpu')
+        if 'cpus_throttled_time_secs' in stats:
+            time_throttled = self._calculate_derivative_metric(source,
+                                                               instance_id,
+                                                               stats,
+                                                               'cpus_throttled_time_secs',
+                                                               'time_throttled')
+        else:
+            time_throttled = 0
+
+        total_cpu = user_cpu + sys_cpu
+
+        return {
+            'user_cpu': user_cpu,
+            'sys_cpu': sys_cpu,
+            'cpu': total_cpu,
+            'time_throttled': time_throttled,
+        }
+
+    @staticmethod
+    def get_mesos_version(state):
+        return tuple(int(part) for part in state['version'].split('.'))
+
+    def _get_memory_metrics(self, stats, state):
+        if self.get_mesos_version(state) >= (0, 23, 0):
+            results = {}
+            for k, v in stats.items():
+                if v is None:
+                    continue
+                if not k.startswith('mem'):
+                    continue
+                if k.endswith('bytes'):
+                    for unit in self.config['byte_unit']:
+                        key = re.sub('bytes$', unit, k)
+                        value = diamond.convertor.binary.convert(
+                            value=v, oldUnit='byte', newUnit=unit)
+                        results[key] = value
+                else:
+                    results[k] = v
+            return results
+        else:
             # mem_rss_bytes (before mesos 0.23.0) is the total memory used
             # including the file cache, as reported from memory.usage_in_bytes.
-
             # anon_bytes is the RSS as reported from "total_rss" in memory.stat
-            # TODO: mesos 0.23.0 is changing the meaning of mem_rss_bytes to be
-            # mem_anon_bytes.  This needs to be updated when moving to mesos 0.23.0
             mem_total = stats['mem_rss_bytes'] / Size.MB
             mem_rss = stats['mem_anon_bytes'] / Size.MB
 
@@ -296,32 +340,22 @@ class MesosCollector(diamond.collector.Collector):
             if mem_file is not None:
                 mem_file /= Size.MB
 
-            disk_used_mb, disk_used_percent = self._get_disk_usage(
-                stats, executor_state)
-
-            metrics = {
-                'user_cpu': user_cpu,
-                'sys_cpu': sys_cpu,
-                'cpu': total_cpu,
+            return {
                 'mem_total': mem_total,
                 'mem_file': mem_file,
                 'mem_resident': mem_rss,
-                'time_throttled': time_throttled,
-                'disk_percent': disk_used_percent,
-                'disk_mb': disk_used_mb
             }
-            self._publish_metric_set(source, instance_id, **metrics)
 
-    def _get_disk_usage(self, stats, state):
+    def _get_disk_metrics(self, stats, executor_state):
         """
-        Gets disk usage statistics
+        Gets disk usage statistics.
         """
         disk_limit = None
         disk_used = None
         if self.config.get('collect_disk_usage'):
-            directory = state.get('directory')
+            directory = executor_state.get('directory')
             # If there are no active tasks, limits from Mesos are not correct.
-            tasks = state.get('tasks')
+            tasks = executor_state.get('tasks')
             if directory and tasks:
                 command = ['du', '-s', '-k', directory]
                 try:
@@ -329,19 +363,23 @@ class MesosCollector(diamond.collector.Collector):
                     out, _ = proc.communicate()
 
                     disk_used = int(out.split('\t')[0]) * Size.KB
-                    disk_limit = state['resources']['disk'] * Size.MB
+                    disk_limit = executor_state['resources']['disk'] * Size.MB
                 except Exception:
                     self.log.exception('Unable to collect disk usage.')
         else:
             disk_limit = stats.get('disk_limit_bytes')
             disk_used = stats.get('disk_used_bytes')
 
-        disk_used_mb = float(disk_used) / Size.MB if disk_used else None
-        disk_used_percent = None
+        results = {}
         if disk_limit and disk_used:
-            disk_used_percent = (float(disk_used) / float(disk_limit)) * 100
+            results['disk_percent'] = (float(disk_used) / float(disk_limit)) * 100
 
-        return disk_used_mb, disk_used_percent
+        if disk_used:
+            for unit in self.config['byte_unit']:
+                results['disk_%s' % unit] = diamond.convertor.binary.convert(
+                    value=disk_used, oldUnit='byte', newUnit=unit)
+
+        return results
 
     def _publish_metric_set(self, source, instance_id, **metrics):
         """
