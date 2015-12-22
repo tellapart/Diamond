@@ -1,0 +1,16 @@
+# This is unfortunately needed until the resolution of: https://github.com/pantsbuild/pants/issues/2534
+
+jar_library(
+  name='scala-compiler',
+  jars=[
+    jar(org='org.scala-lang', name='scala-compiler', rev='2.10.6'),
+])
+
+jar_library(
+  name='scala-repl',
+  jars=[
+    jar(org='org.scala-lang', name='jline', rev='2.10.6', intransitive=True),
+  ],
+  dependencies=[
+    ':scala-compiler',
+])
