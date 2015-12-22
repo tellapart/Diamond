@@ -361,16 +361,26 @@ class Server(object):
 
         # Load collectors
 
-        # Make an list if not one
-        if isinstance(self.config['server']['collectors_path'], basestring):
-            collectors_path = self.config['server']['collectors_path']
-            collectors_path = collectors_path.split(',')
-            self.config['server']['collectors_path'] = collectors_path
-        for path in self.config['server']['collectors_path']:
-            self.collector_paths.append(path.strip())
-        self.load_include_path(self.collector_paths)
+        # If we have a list of FQNs, prefer these over files.
+        collectors_list = self.config['server'].get('collectors')
+        if collectors_list:
+            if isinstance(collectors_list, basestring):
+                collectors_list = collectors_list.split(',')
 
-        collectors = self.load_collectors(self.collector_paths)
+            collectors = {
+                c.__name__: c for c in (
+                    self.load_collector(cl) for cl in collectors_list)}
+        else:
+            # Make an list if not one
+            if isinstance(self.config['server']['collectors_path'], basestring):
+                collectors_path = self.config['server']['collectors_path']
+                collectors_path = collectors_path.split(',')
+                self.config['server']['collectors_path'] = collectors_path
+            for path in self.config['server']['collectors_path']:
+                self.collector_paths.append(path.strip())
+            self.load_include_path(self.collector_paths)
+
+            collectors = self.load_collectors(self.collector_paths)
 
         # Setup Collectors
         self.init_collectors(collectors)
@@ -441,7 +451,8 @@ class Server(object):
                 # Check if its time to reload collectors
                 reload_interval = int(
                     self.config['server']['collectors_reload_interval'])
-                if reload and time_since_reload > reload_interval:
+                if (reload and reload_interval and
+                        time_since_reload > reload_interval):
                     self.log.debug("Reloading config.")
                     self.load_config()
                     # Log

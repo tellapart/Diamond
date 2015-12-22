@@ -28,6 +28,7 @@ import re
 import subprocess
 import urllib2
 import diamond.collector
+import diamond.convertor
 
 # Metric Types
 GAUGE = 'GAUGE'
