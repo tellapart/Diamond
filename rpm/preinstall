@@ -1,0 +1,7 @@
+/usr/bin/getent group diamond >/dev/null 2>&1 || \
+  /usr/sbin/groupadd -r diamond >/dev/null 2>&1 || :;
+
+/usr/bin/getent passwd diamond >/dev/null 2>&1 || \
+  /usr/sbin/useradd -r -N -m -g diamond \
+    -c "diamond Service Account" \
+    -s /sbin/nologin diamond >/dev/null 2>&1 || :;
