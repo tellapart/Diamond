@@ -64,7 +64,7 @@ class TestBindCollector(CollectorTestCase):
             'view._default.resstat.QryRTT500': 0.000000,
             'view._default.resstat.QryRTT800': 0.000000,
             'view._default.resstat.QryRTT1600': 0.000000,
-            'view._default.resstat.QryRTT1600+': 0.000000,
+            'view._default.resstat.QryRTT1600plus': 0.000000,
             'requests.QUERY': 0.000000,
             'queries.A': 0.000000,
             'nsstat.Requestv4': 0.000000,
