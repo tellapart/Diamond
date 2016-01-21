@@ -68,6 +68,7 @@ class BindCollector(diamond.collector.Collector):
         return config
 
     def clean_counter(self, name, value):
+        name = name.replace("+", "plus")
         value = self.derivative(name, value)
         if value < 0:
             value = 0
