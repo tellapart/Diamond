@@ -1,6 +1,9 @@
 python_library(name='handler',
   dependencies=[
-    '3rdparty/python:librato-metrics'
+    '3rdparty/python:librato-metrics',
+    '3rdparty/python:oauthlib',
+    '3rdparty/python:requests',
+    '3rdparty/python:requests-oauthlib'
   ],
   sources=globs('*.py'),
 )
