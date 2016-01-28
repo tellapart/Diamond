@@ -11,6 +11,7 @@ using /proc/net/dev.
 """
 
 import diamond.collector
+from diamond.collector import str_to_bool
 import diamond.convertor
 import os
 import re
@@ -44,6 +45,7 @@ class NetworkCollector(diamond.collector.Collector):
             'interfaces':   ['eth', 'bond', 'em', 'p1p'],
             'byte_unit':    ['bit', 'byte'],
             'greedy':       'true',
+            'raw_stats_only': False,
         })
         return config
 
@@ -61,7 +63,7 @@ class NetworkCollector(diamond.collector.Collector):
             file = open(self.PROC)
             # Build Regular Expression
             greed = ''
-            if self.config['greedy'].lower() == 'true':
+            if str_to_bool(self.config['greedy']):
                 greed = '\S*'
 
             exp = ('^(?:\s*)((?:%s)%s):(?:\s*)'
@@ -109,6 +111,11 @@ class NetworkCollector(diamond.collector.Collector):
         for device in results:
             stats = results[device]
             for s, v in stats.items():
+                if str_to_bool(self.config['raw_stats_only']):
+                    metric_name = '/'.join(('if', device, s))
+                    self.publish(metric_name, v)
+                    continue
+
                 # Get Metric Name
                 metric_name = '.'.join([device, s])
                 # Get Metric Value

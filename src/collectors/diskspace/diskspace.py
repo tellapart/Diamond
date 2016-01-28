@@ -21,6 +21,7 @@ Uses /proc/mounts and os.statvfs() to get disk space usage
 """
 
 import diamond.collector
+from diamond.collector import str_to_bool
 import diamond.convertor
 import os
 import re
@@ -76,7 +77,8 @@ class DiskSpaceCollector(diamond.collector.Collector):
             'method': 'Threaded',
 
             # Default numeric output
-            'byte_unit': ['byte']
+            'byte_unit': ['byte'],
+            'raw_stats_only': False
         })
         return config
 
@@ -96,6 +98,8 @@ class DiskSpaceCollector(diamond.collector.Collector):
                 self.filesystems.append(filesystem.strip())
         elif isinstance(self.config['filesystems'], list):
             self.filesystems = self.config['filesystems']
+
+        self.raw_stats_only = str_to_bool(self.config['raw_stats_only'])
 
     def get_disk_labels(self):
         """
@@ -235,38 +239,61 @@ class DiskSpaceCollector(diamond.collector.Collector):
             else:
                 raise NotImplementedError("platform not supported")
 
-            for unit in self.config['byte_unit']:
-                metric_name = '%s.%s_percentfree' % (name, unit)
-                metric_value = float(blocks_free) / float(
+            if self.raw_stats_only:
+                bsize = float(block_size)
+                bfree = float(blocks_free) / float(
                     blocks_free + (blocks_total - blocks_free)) * 100
-                self.publish_gauge(metric_name, metric_value, 2)
-
-                metric_name = '%s.%s_used' % (name, unit)
-                metric_value = float(block_size) * float(
-                    blocks_total - blocks_free)
-                metric_value = diamond.convertor.binary.convert(
-                    value=metric_value, oldUnit='byte', newUnit=unit)
-                self.publish_gauge(metric_name, metric_value, 2)
-
-                metric_name = '%s.%s_free' % (name, unit)
-                metric_value = float(block_size) * float(blocks_free)
-                metric_value = diamond.convertor.binary.convert(
-                    value=metric_value, oldUnit='byte', newUnit=unit)
-                self.publish_gauge(metric_name, metric_value, 2)
-
+                metrics = {
+                    'bytes_used_percent': 100 - bfree,
+                    'bytes_free_percent': bfree,
+                    'bytes_total': bsize * blocks_total,
+                    'bytes_avail': bsize * blocks_avail,
+                    'bytes_free': bsize * blocks_free,
+                    'bytes_used': bsize * (blocks_total - blocks_free)
+                }
                 if os.name != 'nt':
-                    metric_name = '%s.%s_avail' % (name, unit)
-                    metric_value = float(block_size) * float(blocks_avail)
+                    ifree = float(inodes_free) / float(inodes_total) * 100
+                    metrics['inodes_used_percent'] = 100 - ifree
+                    metrics['inodes_free_percent'] = ifree
+                    metrics['inodes_free'] = inodes_free
+                    metrics['inodes_avail'] = inodes_avail
+
+                for k, v in metrics.iteritems():
+                    mname = '/'.join((name, k))
+                    self.publish(mname, v)
+            else:
+                for unit in self.config['byte_unit']:
+                    metric_name = '%s.%s_percentfree' % (name, unit)
+                    metric_value = float(blocks_free) / float(
+                        blocks_free + (blocks_total - blocks_free)) * 100
+                    self.publish_gauge(metric_name, metric_value, 2)
+
+                    metric_name = '%s.%s_used' % (name, unit)
+                    metric_value = float(block_size) * float(
+                        blocks_total - blocks_free)
                     metric_value = diamond.convertor.binary.convert(
                         value=metric_value, oldUnit='byte', newUnit=unit)
                     self.publish_gauge(metric_name, metric_value, 2)
 
-            if os.name != 'nt':
-                if float(inodes_total) > 0:
-                    self.publish_gauge(
-                        '%s.inodes_percentfree' % name,
-                        float(inodes_free) / float(inodes_total) * 100)
-                self.publish_gauge('%s.inodes_used' % name,
-                                   inodes_total - inodes_free)
-                self.publish_gauge('%s.inodes_free' % name, inodes_free)
-                self.publish_gauge('%s.inodes_avail' % name, inodes_avail)
+                    metric_name = '%s.%s_free' % (name, unit)
+                    metric_value = float(block_size) * float(blocks_free)
+                    metric_value = diamond.convertor.binary.convert(
+                        value=metric_value, oldUnit='byte', newUnit=unit)
+                    self.publish_gauge(metric_name, metric_value, 2)
+
+                    if os.name != 'nt':
+                        metric_name = '%s.%s_avail' % (name, unit)
+                        metric_value = float(block_size) * float(blocks_avail)
+                        metric_value = diamond.convertor.binary.convert(
+                            value=metric_value, oldUnit='byte', newUnit=unit)
+                        self.publish_gauge(metric_name, metric_value, 2)
+
+                if os.name != 'nt':
+                    if float(inodes_total) > 0:
+                        self.publish_gauge(
+                            '%s.inodes_percentfree' % name,
+                            float(inodes_free) / float(inodes_total) * 100)
+                    self.publish_gauge('%s.inodes_used' % name,
+                                       inodes_total - inodes_free)
+                    self.publish_gauge('%s.inodes_free' % name, inodes_free)
+                    self.publish_gauge('%s.inodes_avail' % name, inodes_avail)

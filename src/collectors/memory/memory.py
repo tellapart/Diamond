@@ -14,8 +14,10 @@ as memory is allocated to Buffers and Cache as well. See
 """
 
 import diamond.collector
+from diamond.collector import str_to_bool
 import diamond.convertor
 import os
+import re
 
 try:
     import psutil
@@ -65,7 +67,8 @@ class MemoryCollector(diamond.collector.Collector):
             'method':   'Threaded',
             # Collect all the nodes or just a few standard ones?
             # Uncomment to enable
-            #'detailed': 'True'
+            #'detailed': 'True',
+            'lower_name': 'False'
         })
         return config
 
@@ -91,6 +94,7 @@ class MemoryCollector(diamond.collector.Collector):
         Collect memory stats
         """
         if os.access(self.PROC, os.R_OK):
+            pattern = re.compile('(?P<name>\w+)\((?P<suffix>\w+)\)')
             file = open(self.PROC)
             data = file.read()
             file.close()
@@ -100,6 +104,12 @@ class MemoryCollector(diamond.collector.Collector):
                 try:
                     name, value, units = line.split()
                     name = name.rstrip(':')
+                    m = pattern.search(name)
+                    if m:
+                        name = '_'.join((m.group('name'), m.group('suffix')))
+                    if str_to_bool(self.config.get('lower_name')):
+                        name = name.lower()
+
                     value = int(value)
 
                     parts[name] = (value, units)
