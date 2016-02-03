@@ -112,10 +112,10 @@ class ObservabilityHandler(Handler):
         Generate an item to add to the queue.
         """
         queue_args = {
-            'service': metric.getCollectorPath(),
-            'name': metric.getMetricPath(),
+            'service': metric.getService(),
+            'name': metric.getName(),
             'value': float(metric.value),
-            'source': metric.host,
+            'source': metric.getHost(),
             'measure_time': metric.timestamp
         }
 

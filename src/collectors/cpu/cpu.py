@@ -61,7 +61,8 @@ class CPUCollector(diamond.collector.Collector):
             'xenfix':   None,
             'simple':   'False',
             'normalize': 'False',
-            'include_aggregate': 'False'
+            'include_aggregate': 'False',
+            'prefix_total': 'True'
         })
         return config
 
@@ -156,7 +157,11 @@ class CPUCollector(diamond.collector.Collector):
                 stats = results[cpu]
                 for s in stats.keys():
                     # Get Metric Name
-                    metric_name = '.'.join([cpu, s])
+                    prefix = str_to_bool(self.config['prefix_total'])
+                    if prefix or cpu != 'total':
+                        metric_name = '.'.join([cpu, s])
+                    else:
+                        metric_name = s
                     # Get actual data
                     if (str_to_bool(self.config['normalize'])
                             and cpu == 'total' and ncpus > 0):

@@ -15,6 +15,7 @@ before graphite will generate the metrics.
 """
 
 import diamond.collector
+from diamond.collector import str_to_bool
 import diamond.convertor
 import time
 import os
@@ -29,18 +30,48 @@ except ImportError:
 
 class DiskUsageCollector(diamond.collector.Collector):
 
+    READS = 'reads'
+    READS_MERGED = 'reads_merged'
+    READS_SECTORS = 'reads_sectors'
+    READS_MILLISECONDS = 'reads_milliseconds'
+    WRITES = 'writes'
+    WRITES_MERGED = 'writes_merged'
+    WRITES_SECTORS = 'writes_sectors'
+    WRITES_MILLISECONDS = 'writes_milliseconds'
+    IO_IN_PROGRESS = 'io_in_progress'
+    IO_MILLISECONDS = 'io_milliseconds'
+    IO_MILLISECONDS_WEIGHTED = 'io_milliseconds_weighted'
+
     MAX_VALUES = {
-        'reads':                    4294967295,
-        'reads_merged':             4294967295,
-        'reads_milliseconds':       4294967295,
-        'writes':                   4294967295,
-        'writes_merged':            4294967295,
-        'writes_milliseconds':      4294967295,
-        'io_milliseconds':          4294967295,
-        'io_milliseconds_weighted': 4294967295
+        READS:                    4294967295,
+        READS_MERGED:             4294967295,
+        READS_MILLISECONDS:       4294967295,
+        WRITES:                   4294967295,
+        WRITES_MERGED:            4294967295,
+        WRITES_MILLISECONDS:      4294967295,
+        IO_MILLISECONDS:          4294967295,
+        IO_MILLISECONDS_WEIGHTED: 4294967295
+    }
+
+    RAW_METRIC_NAMES = {
+        READS: 'num_reads',
+        READS_MERGED: 'merged_reads',
+        READS_SECTORS: 'sectors_read',
+        READS_MILLISECONDS: 'ms_read',
+        WRITES: 'num_writes',
+        WRITES_MERGED: 'merged_writes',
+        WRITES_SECTORS: 'sectors_written',
+        WRITES_MILLISECONDS: 'ms_written',
+        IO_IN_PROGRESS: 'io_inprogress',
+        IO_MILLISECONDS: 'ms_doing_io',
+        IO_MILLISECONDS_WEIGHTED: 'ms_doing_io_weighted',
     }
 
     LastCollectTime = None
+
+    def __init__(self, config, handlers):
+        super(DiskUsageCollector, self).__init__(config, handlers)
+        self.raw_stats_only = str_to_bool(self.config['raw_stats_only'])
 
     def get_default_config_help(self):
         config_help = super(DiskUsageCollector, self).get_default_config_help()
@@ -68,8 +99,15 @@ class DiskUsageCollector(diamond.collector.Collector):
                          + '|dm\-[0-9]+$'),
             'sector_size': 512,
             'send_zero': False,
+            'raw_stats_only': False
         })
         return config
+
+    def get_metric_name(self, name):
+        if self.raw_stats_only:
+            return self.RAW_METRIC_NAMES[name]
+
+        return name
 
     def get_disk_statistics(self):
         """
@@ -105,17 +143,17 @@ class DiskUsageCollector(diamond.collector.Collector):
 
                         result[(major, minor)] = {
                             'device': device,
-                            'reads': float(columns[3]),
-                            'reads_merged': float(columns[4]),
-                            'reads_sectors': float(columns[5]),
-                            'reads_milliseconds': float(columns[6]),
-                            'writes': float(columns[7]),
-                            'writes_merged': float(columns[8]),
-                            'writes_sectors': float(columns[9]),
-                            'writes_milliseconds': float(columns[10]),
-                            'io_in_progress': float(columns[11]),
-                            'io_milliseconds': float(columns[12]),
-                            'io_milliseconds_weighted': float(columns[13])
+                            self.get_metric_name(self.READS): float(columns[3]),
+                            self.get_metric_name(self.READS_MERGED): float(columns[4]),
+                            self.get_metric_name(self.READS_SECTORS): float(columns[5]),
+                            self.get_metric_name(self.READS_MILLISECONDS): float(columns[6]),
+                            self.get_metric_name(self.WRITES): float(columns[7]),
+                            self.get_metric_name(self.WRITES_MERGED): float(columns[8]),
+                            self.get_metric_name(self.WRITES_SECTORS): float(columns[9]),
+                            self.get_metric_name(self.WRITES_MILLISECONDS): float(columns[10]),
+                            self.get_metric_name(self.IO_IN_PROGRESS):  float(columns[11]),
+                            self.get_metric_name(self.IO_MILLISECONDS): float(columns[12]),
+                            self.get_metric_name(self.IO_MILLISECONDS_WEIGHTED): float(columns[13])
                         }
                     except ValueError:
                         continue
@@ -170,6 +208,14 @@ class DiskUsageCollector(diamond.collector.Collector):
             metrics = {}
             name = info['device']
             if not reg.match(name):
+                continue
+
+            if self.raw_stats_only:
+                for k, v in info.iteritems():
+                    if k == 'device':
+                        continue
+                    metric_name = '/'.join((name, k))
+                    self.publish(metric_name, v)
                 continue
 
             for key, value in info.iteritems():

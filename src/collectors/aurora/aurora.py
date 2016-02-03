@@ -14,6 +14,7 @@ AuroraCollector.conf
 ```
     enabled = True
     hosts = general@localhost:8081, www.example.com:8081, etc
+    raw_stats_only = If True, only publishes numeric metrics from /vars.json.
 ```
 
 Only supply a cluster name (e.g. general) if you intend to override the
@@ -31,6 +32,7 @@ import json
 import re
 import urllib2
 import diamond.collector
+from diamond.collector import str_to_bool
 
 # Metric Types
 GAUGE = 'GAUGE'
@@ -71,6 +73,8 @@ class NoRedirectHandler(urllib2.HTTPRedirectHandler):
     """
     def http_error_302(self, req, fp, code, msg, headers):
         raise RedirectError()
+
+    http_error_301 = http_error_303 = http_error_307 = http_error_302
 
 class AuroraCollector(diamond.collector.Collector):
 
@@ -283,6 +287,7 @@ class AuroraCollector(diamond.collector.Collector):
         """
         Setup collector by constructing the full mapping of name to metric type.
         """
+        super(AuroraCollector, self).__init__(config, handlers)
         published_metrics = dict()
         for metric in self.AURORA_METRICS:
             published_metrics.update(metric.get_metrics())
@@ -293,7 +298,7 @@ class AuroraCollector(diamond.collector.Collector):
             ('job_stats_%s_tasks', COUNTER, self._generate_tasks_regex())
         ]
 
-        super(AuroraCollector, self).__init__(config, handlers)
+        self.raw_stats_only = str_to_bool(self.config['raw_stats_only'])
 
     def get_default_config_help(self):
         config_help = super(AuroraCollector, self).get_default_config_help()
@@ -312,7 +317,8 @@ class AuroraCollector(diamond.collector.Collector):
             'hosts': ['localhost:8081'],
             'path': 'aurora',
             'thermos_executor_cpu_overhead': 0.25,
-            'thermos_executor_mem_overhead': 128
+            'thermos_executor_mem_overhead': 128,
+            'raw_stats_only': False
         })
         return config
 
@@ -457,16 +463,18 @@ class AuroraCollector(diamond.collector.Collector):
         """
         Publishes explicitly exposed metrics.
         """
-        name, metric_type, source = self._extract_metric(raw_name, cluster)
-        if not name:
-            return
-
         # If the value can't be coerced to a float, don't publish.
         try:
             value = float(raw_value)
         except ValueError:
-            self.log.warn('Skipping %s due to non-numeric value %s',
-                          raw_name, raw_value)
+            return
+
+        if self.raw_stats_only:
+            self.publish(raw_name, value)
+            return
+
+        name, metric_type, source = self._extract_metric(raw_name, cluster)
+        if not name:
             return
 
         name = self._format_identifier(name)
@@ -483,12 +491,11 @@ class AuroraCollector(diamond.collector.Collector):
                         host, port, 'apibeta/getRoleSummary', verb='POST')
                 except RedirectError:
                     self.log.warn(
-                        'GetJobSummmary returned a 302, which indicates an '
-                        'inactive scheduler. Skipping collection.')
+                        'GetRoleSummmary returned a 30X code, which indicates '
+                        'an inactive scheduler. Skipping collection.')
                     return
 
                 metrics = self._fetch_data(host, port, 'vars.json')
-
                 cluster = cluster or role_summary['serverInfo']['clusterName']
 
                 # If this is not the active scheduler, don't publish metrics.
@@ -496,16 +503,17 @@ class AuroraCollector(diamond.collector.Collector):
                     self.log.warn('Inactive scheduler. Skipping collection.')
                     return
 
-                # Publish metrics contained in the job summary information.
-                roles = role_summary['result']['roleSummaryResult']['summaries']
-                for r in roles:
-                    body = json.dumps({'role': r['role']})
-                    res = self._fetch_data(
-                        host, port, 'apibeta/getJobSummary', verb='POST',
-                        data=body)
-                    summaries = res['result']['jobSummaryResult']['summaries']
-                    for js in summaries:
-                        self._publish_job_metrics(js, cluster)
+                if not self.raw_stats_only:
+                    # Publish metrics contained in the job summary information.
+                    roles = role_summary['result']['roleSummaryResult']['summaries']
+                    for r in roles:
+                        body = json.dumps({'role': r['role']})
+                        res = self._fetch_data(
+                            host, port, 'apibeta/getJobSummary', verb='POST',
+                            data=body)
+                        summaries = res['result']['jobSummaryResult']['summaries']
+                        for js in summaries:
+                            self._publish_job_metrics(js, cluster)
 
                 # Publish explicitly exposed metrics.
                 for raw_name, raw_value in metrics.iteritems():

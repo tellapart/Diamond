@@ -11,7 +11,8 @@ class Metric(object):
     _METRIC_TYPES = ['COUNTER', 'GAUGE']
 
     def __init__(self, path, value, raw_value=None, timestamp=None, precision=0,
-                 host=None, metric_type='COUNTER', ttl=None, interval=None):
+                 host=None, metric_type='COUNTER', ttl=None, interval=None,
+                 service=None, raw_name=None):
         """
         Create new instance of the Metric class
 
@@ -23,6 +24,9 @@ class Metric(object):
             Generally the default (2) should work fine.
             interval=int: the interval (in seconds) at which the metric was
             polled.
+            service=string: An explicit service name (if one cannot be parsed
+            easily from the path)
+            raw_name=string: The explicit metric name. Should be used
         """
 
         # Validate the path, value and metric_type submitted
@@ -66,6 +70,8 @@ class Metric(object):
         self.metric_type = metric_type
         self.ttl = ttl
         self.interval = interval
+        self.service = service
+        self.raw_name = raw_name
 
     def __repr__(self):
         """
@@ -114,6 +120,26 @@ class Metric(object):
 
         offset = self.path.index(self.host) - 1
         return self.path[0:offset]
+
+    def getHost(self):
+        """
+            Returns the host/source name of the metric.
+        """
+        return self.host
+
+    def getName(self):
+        """
+            Returns the name of the metric. Falls back to path parsing
+            if a raw name is not given.
+        """
+        return self.raw_name or self.getMetricPath()
+
+    def getService(self):
+        """
+            Returns the explicit service for the metric.
+            If the service is not set, return the collector path.
+        """
+        return self.service or self.getCollectorPath()
 
     def getCollectorPath(self):
         """

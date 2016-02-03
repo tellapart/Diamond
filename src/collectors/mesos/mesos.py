@@ -29,6 +29,7 @@ import subprocess
 import urllib2
 import diamond.collector
 import diamond.convertor
+from diamond.collector import str_to_bool
 
 # Metric Types
 GAUGE = 'GAUGE'
@@ -159,12 +160,20 @@ class MesosCollector(diamond.collector.Collector):
         """
         Setup collector by constructing the full mapping of name to metric type.
         """
+        super(MesosCollector, self).__init__(config, handlers)
         published_metrics = dict()
         for metric in self.MESOS_METRICS:
             published_metrics.update(metric.get_metrics())
         self.published_metrics = published_metrics
 
-        super(MesosCollector, self).__init__(config, handlers)
+        self.raw_stats_only = str_to_bool(self.config['raw_stats_only'])
+
+        ci = self.config.get('cluster_identifiers')
+        if isinstance(ci, basestring):
+            ci = [ci]
+
+        self.log.debug('Setting cluster identifiers: %s', ci)
+        self.cluster_identifiers = ci
 
     def get_default_config_help(self):
         config_help = super(MesosCollector, self).get_default_config_help()
@@ -185,6 +194,11 @@ class MesosCollector(diamond.collector.Collector):
             'hosts': ['localhost:5050'],
             'path': 'mesos',
             'collect_disk_usage': True,
+            'raw_stats_only': False,
+            'container_service': 'mesos.container',
+            'master_service': 'mesos.master',
+            'slave_service': 'mesos.slave',
+            'cluster_identifiers': ['group', 'cluster'],
             # Default numeric output.
             'byte_unit': ['mb']
             })
@@ -207,7 +221,6 @@ class MesosCollector(diamond.collector.Collector):
 
         for host in hosts:
             matches = re.search('((.+)\@)?([^:]+)(:(\d+))?', host)
-            #cluster = matches.group(2)
             hostname = matches.group(3)
             port = matches.group(5)
 
@@ -226,25 +239,32 @@ class MesosCollector(diamond.collector.Collector):
         handle = urllib2.urlopen(req)
         return json.loads(handle.read())
 
-    def _publish_metrics(self, raw_name, raw_value):
+    def _publish_metrics(self, raw_name, raw_value, is_master):
         """
         Publishes explicitly exposed metrics.
         """
+        # If the value can't be coerced to a float, don't publish.
+        try:
+            value = float(raw_value)
+        except ValueError:
+            return
+
+        if is_master:
+            service = self.config['master_service']
+        else:
+            service = self.config['slave_service']
+
+        if self.raw_stats_only:
+            self.publish(raw_name, value, service=service)
+            return
+
         # If the name is in the known list, immediately return.
         metric_type = self.published_metrics.get(raw_name)
         if not metric_type:
             return
 
-        # If the value can't be coerced to a float, don't publish.
-        try:
-            value = float(raw_value)
-        except ValueError:
-            self.log.warn('Skipping %s due to non-numeric value %s',
-                          raw_name, raw_value)
-            return
-
         name = self._format_identifier(raw_name)
-        self.publish(name, value, metric_type=metric_type)
+        self.publish(name, value, metric_type=metric_type, service=service)
 
     def _merge_dicts(self, *args):
         result = {}
@@ -269,7 +289,7 @@ class MesosCollector(diamond.collector.Collector):
                 job_name = executor['source']
                 instance_id = job_name.split('.')[-1]
                 base_job_name = job_name[0:job_name.rindex('.')]
-                source = cluster + '.' + base_job_name
+                source = '.'.join(filter(None, (cluster, base_job_name)))
 
             cpu = self._get_cpu_metrics(source, instance_id, stats)
             memory = self._get_memory_metrics(stats, state)
@@ -279,34 +299,42 @@ class MesosCollector(diamond.collector.Collector):
             self._publish_metric_set(source, instance_id, **metrics)
 
     def _get_cpu_metrics(self, source, instance_id, stats):
-        # Calculate CPU delta
-        user_cpu = self._calculate_derivative_metric(source,
-                                                     instance_id,
-                                                     stats,
-                                                     'cpus_user_time_secs',
-                                                     'user_cpu')
-        sys_cpu = self._calculate_derivative_metric(source,
-                                                    instance_id,
-                                                    stats,
-                                                    'cpus_system_time_secs',
-                                                    'sys_cpu')
-        if 'cpus_throttled_time_secs' in stats:
-            time_throttled = self._calculate_derivative_metric(source,
-                                                               instance_id,
-                                                               stats,
-                                                               'cpus_throttled_time_secs',
-                                                               'time_throttled')
+        if self.raw_stats_only:
+            return {
+                k: v for k, v in stats.items()
+                if k.startswith('cpu') and v is not None}
         else:
-            time_throttled = 0
+            # Calculate CPU delta
+            user_cpu = self._calculate_derivative_metric(
+                source,
+                instance_id,
+                stats,
+                'cpus_user_time_secs',
+                'user_cpu')
+            sys_cpu = self._calculate_derivative_metric(
+                source,
+                instance_id,
+                stats,
+                'cpus_system_time_secs',
+                'sys_cpu')
+            if 'cpus_throttled_time_secs' in stats:
+                time_throttled = self._calculate_derivative_metric(
+                    source,
+                    instance_id,
+                    stats,
+                    'cpus_throttled_time_secs',
+                    'time_throttled')
+            else:
+                time_throttled = 0
 
-        total_cpu = user_cpu + sys_cpu
+            total_cpu = user_cpu + sys_cpu
 
-        return {
-            'user_cpu': user_cpu,
-            'sys_cpu': sys_cpu,
-            'cpu': total_cpu,
-            'time_throttled': time_throttled,
-        }
+            return {
+                'user_cpu': user_cpu,
+                'sys_cpu': sys_cpu,
+                'cpu': total_cpu,
+                'time_throttled': time_throttled,
+            }
 
     @staticmethod
     def get_mesos_version(state):
@@ -320,7 +348,7 @@ class MesosCollector(diamond.collector.Collector):
                     continue
                 if not k.startswith('mem'):
                     continue
-                if k.endswith('bytes'):
+                if k.endswith('bytes') and not self.raw_stats_only:
                     for unit in self.config['byte_unit']:
                         key = re.sub('bytes$', unit, k)
                         value = diamond.convertor.binary.convert(
@@ -372,13 +400,17 @@ class MesosCollector(diamond.collector.Collector):
             disk_used = stats.get('disk_used_bytes')
 
         results = {}
-        if disk_limit and disk_used:
-            results['disk_percent'] = (float(disk_used) / float(disk_limit)) * 100
+        if self.raw_stats_only:
+            results['disk_limit_bytes'] = disk_limit or 0
+            results['disk_used_bytes'] = disk_used or 0
+        else:
+            if disk_limit and disk_used:
+                results['disk_percent'] = (float(disk_used) / float(disk_limit)) * 100
 
-        if disk_used:
-            for unit in self.config['byte_unit']:
-                results['disk_%s' % unit] = diamond.convertor.binary.convert(
-                    value=disk_used, oldUnit='byte', newUnit=unit)
+            if disk_used:
+                for unit in self.config['byte_unit']:
+                    results['disk_%s' % unit] = diamond.convertor.binary.convert(
+                        value=disk_used, oldUnit='byte', newUnit=unit)
 
         return results
 
@@ -389,7 +421,12 @@ class MesosCollector(diamond.collector.Collector):
         full_source = "%s.%s" % (source, instance_id)
         for k, v in metrics.iteritems():
             if v is not None:
-                self.publish('job_resources_used_%s' % k, v, source=full_source)
+                if self.raw_stats_only:
+                    name = k
+                else:
+                    name = 'job_resources_used_%s' % k
+                service = self.config.get('container_service')
+                self.publish(name, v, source=full_source, service=service)
 
     def _calculate_derivative_metric(self, source, instance_id, stats,
                                      stat_name, metric_name):
@@ -414,14 +451,20 @@ class MesosCollector(diamond.collector.Collector):
 
                 # Publish explicitly exposed metrics.
                 for raw_name, raw_value in metrics.iteritems():
-                    self._publish_metrics(raw_name, raw_value)
+                    self._publish_metrics(
+                        raw_name, raw_value, is_master=is_primary_master)
 
                 # IMPORTANT: do not fetch state.json from the master; it is a
                 # blocking operation that interferes with basic Mesos
                 # operations.
                 if is_primary_master is None:
                     state = self._fetch_data(host, port, 'state.json')
-                    cluster = state['attributes'].get('group') or 'unknown'
+                    a = state['attributes']
+                    cluster = None
+                    for ci in self.cluster_identifiers:
+                        cluster = a.get(ci)
+                        if cluster:
+                            break
 
                     # Publish task level metrics
                     self._publish_task_metrics(cluster, host, port, state)
