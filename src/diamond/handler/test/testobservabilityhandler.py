@@ -65,6 +65,7 @@ class TestObservabilityHandler(unittest.TestCase):
             'name': 'total.idle',
             'value': 1.4,
             'measure_time': 1234567,
+            'groups': ()
         })
 
     @run_only_if_requests_is_available
@@ -77,14 +78,17 @@ class TestObservabilityHandler(unittest.TestCase):
 
         self.assertEqual(
             set(groups.keys()),
-            {('cpu', 'com.example.www2', 1234540),
-             ('cpu', 'com.example.www', 1234560),
-             ('cpu', 'com.example.www', 1234540)}
+            {('cpu', 'com.example.www2', (), 1234540),
+             ('cpu', 'com.example.www', (), 1234560),
+             ('cpu', 'com.example.www', (), 1234540)}
         )
 
-        self.assertEqual(len(groups[('cpu', 'com.example.www2', 1234540)]), 1)
-        self.assertEqual(len(groups[('cpu', 'com.example.www', 1234560)]), 2)
-        self.assertEqual(len(groups[('cpu', 'com.example.www', 1234540)]), 2)
+        self.assertEqual(
+            len(groups[('cpu', 'com.example.www2', (), 1234540)]), 1)
+        self.assertEqual(
+            len(groups[('cpu', 'com.example.www', (), 1234560)]), 2)
+        self.assertEqual(
+            len(groups[('cpu', 'com.example.www', (), 1234540)]), 2)
 
     @run_only_if_requests_is_available
     def test_metric_to_obs_expiration(self):

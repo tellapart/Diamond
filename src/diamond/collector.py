@@ -259,6 +259,10 @@ class Collector(object):
 
         self.collect_running = False
 
+        self.groups = self.config.get('groups')
+        if isinstance(self.groups, basestring):
+            self.groups = [self.groups]
+
     def get_default_config_help(self):
         """
         Returns the help text for the configuration options for this collector
@@ -466,7 +470,7 @@ class Collector(object):
             metric = Metric(path, value, raw_value=raw_value, timestamp=None,
                             precision=precision, host=host,
                             metric_type=metric_type, ttl=ttl, interval=interval,
-                            service=service, raw_name=name)
+                            service=service, raw_name=name, groups=self.groups)
         except DiamondException:
             self.log.error(('Error when creating new Metric: path=%r, '
                             'value=%r'), path, value)

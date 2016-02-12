@@ -69,6 +69,7 @@ class ObservabilityHandler(Handler):
 
         client = oauth2.BackendApplicationClient(client_id=self.client_key)
         self.session = requests_oauthlib.OAuth2Session(client=client)
+        self.timeout = int(self.config['timeout'])
         self.token = None
 
     def get_default_config_help(self):
@@ -84,7 +85,8 @@ class ObservabilityHandler(Handler):
             'token_url': '',
             'relay_url': '',
             'queue_max_age': '',
-            'floor_seconds': ''
+            'floor_seconds': '',
+            'timeout': ''
         })
 
         return config
@@ -102,7 +104,8 @@ class ObservabilityHandler(Handler):
             'token_url': '',
             'relay_url': '',
             'queue_max_age': 180,
-            'floor_seconds': 10
+            'floor_seconds': 10,
+            'timeout': 10
         })
 
         return config
@@ -116,7 +119,8 @@ class ObservabilityHandler(Handler):
             'name': metric.getName(),
             'value': float(metric.value),
             'source': metric.getHost(),
-            'measure_time': metric.timestamp
+            'measure_time': metric.timestamp,
+            'groups': metric.getGroups()
         }
 
         return queue_args
@@ -162,7 +166,8 @@ class ObservabilityHandler(Handler):
             'current_time': 123,
             'metrics': {
                 'key': 123
-            }
+            },
+            'groups': ['my_group']
         }
 
         So service/source/time are the grouping keys. Time will be rounded to
@@ -170,7 +175,11 @@ class ObservabilityHandler(Handler):
         """
         groups = {}
         grouper = lambda v: (
-            v['service'], v['source'], self._floor_timestamp(v['measure_time']))
+            v['service'],
+            v['source'],
+            v['groups'],
+            self._floor_timestamp(v['measure_time'])
+        )
         items = sorted(items, key=grouper)
         for k, g in groupby(items, grouper):
             groups[k] = list(g)
@@ -187,19 +196,22 @@ class ObservabilityHandler(Handler):
                 if not self.token:
                     self.token = self.session.fetch_token(
                         token_url=self.config['token_url'],
+                        timeout=self.timeout,
                         auth=(self.client_key, self.client_secret))
 
-                service, source, timestamp = group
+                service, source, groups, timestamp = group
                 metrics = {i['name']: i['value'] for i in items}
                 data = dict(
                     zone=self.config['zone'],
                     service=service,
                     source=source,
                     timestamp=timestamp,
+                    groups=json.dumps(groups),
                     metrics=json.dumps(metrics))
                 res = self.session.post(
                     url=self.config['relay_url'],
-                    data=data)
+                    data=data,
+                    timeout=self.timeout)
                 res.raise_for_status()
                 self.log.debug(
                     'Successfully flushed %s metrics to the relay.', len(items))

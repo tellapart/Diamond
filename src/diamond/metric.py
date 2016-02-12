@@ -12,7 +12,7 @@ class Metric(object):
 
     def __init__(self, path, value, raw_value=None, timestamp=None, precision=0,
                  host=None, metric_type='COUNTER', ttl=None, interval=None,
-                 service=None, raw_name=None):
+                 service=None, raw_name=None, groups=None):
         """
         Create new instance of the Metric class
 
@@ -27,6 +27,7 @@ class Metric(object):
             service=string: An explicit service name (if one cannot be parsed
             easily from the path)
             raw_name=string: The explicit metric name. Should be used
+            groups: The groups that the host/service belong to.
         """
 
         # Validate the path, value and metric_type submitted
@@ -72,6 +73,7 @@ class Metric(object):
         self.interval = interval
         self.service = service
         self.raw_name = raw_name
+        self.groups = groups
 
     def __repr__(self):
         """
@@ -140,6 +142,12 @@ class Metric(object):
             If the service is not set, return the collector path.
         """
         return self.service or self.getCollectorPath()
+
+    def getGroups(self):
+        """
+            Returns the groups for the metric.
+        """
+        return tuple(self.groups or [])
 
     def getCollectorPath(self):
         """
