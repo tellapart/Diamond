@@ -47,6 +47,7 @@ class PingCollector(diamond.collector.Collector):
             'bin':         'The path to the ping binary',
             'use_sudo':    'Use sudo?',
             'sudo_cmd':    'Path to sudo',
+            'timeout':     'Timeout on the ping command'
         })
         return config_help
 
@@ -60,6 +61,7 @@ class PingCollector(diamond.collector.Collector):
             'bin':              '/bin/ping',
             'use_sudo':         False,
             'sudo_cmd':         '/usr/bin/sudo',
+            'timeout':          None
         })
         return config
 
@@ -74,7 +76,11 @@ class PingCollector(diamond.collector.Collector):
                                    % self.config['bin'])
                     return
 
-                command = [self.config['bin'], '-nq', '-c 1', host]
+                command = [self.config['bin'], '-nq', '-c 1']
+                timeout = self.config['timeout']
+                if timeout:
+                    command.append('-w %s' % timeout)
+                command.append(host)
 
                 if str_to_bool(self.config['use_sudo']):
                     command.insert(0, self.config['sudo_cmd'])
