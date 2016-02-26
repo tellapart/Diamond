@@ -426,7 +426,8 @@ class MesosCollector(diamond.collector.Collector):
                 else:
                     name = 'job_resources_used_%s' % k
                 service = self.config.get('container_service')
-                self.publish(name, v, source=full_source, service=service)
+                self.publish(
+                    name, v, source=full_source, service=service, groups=[source])
 
     def _calculate_derivative_metric(self, source, instance_id, stats,
                                      stat_name, metric_name):
