@@ -442,7 +442,8 @@ class Collector(object):
         raise NotImplementedError()
 
     def publish(self, name, value, raw_value=None, precision=0,
-                metric_type='GAUGE', instance=None, source=None, service=None):
+                metric_type='GAUGE', instance=None, source=None, service=None,
+                groups=None):
         """
         Publish a metric with the given name
         """
@@ -467,10 +468,11 @@ class Collector(object):
         try:
             host = self.construct_host(source)
             service = service or self.config.get('service')
+            groups = groups or self.groups
             metric = Metric(path, value, raw_value=raw_value, timestamp=None,
                             precision=precision, host=host,
                             metric_type=metric_type, ttl=ttl, interval=interval,
-                            service=service, raw_name=name, groups=self.groups)
+                            service=service, raw_name=name, groups=groups)
         except DiamondException:
             self.log.error(('Error when creating new Metric: path=%r, '
                             'value=%r'), path, value)
