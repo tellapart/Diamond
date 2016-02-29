@@ -38,7 +38,7 @@ class TestScribeCollector(CollectorTestCase):
 
         patch_communicate = patch(
             'subprocess.Popen.communicate',
-            Mock(side_effect=lambda *args: fixtures.pop(0)))
+            Mock(side_effect=lambda *args, **kwargs: fixtures.pop(0)))
 
         patch_communicate.start()
         self.collector.collect()

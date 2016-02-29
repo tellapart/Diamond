@@ -13,10 +13,15 @@ import configobj
 import traceback
 import time
 import re
-import subprocess
+import sys
 
 from diamond.metric import Metric
 from error import DiamondException
+
+if os.name == 'posix' and sys.version_info[0] < 3:
+    import subprocess32 as subprocess
+else:
+    import subprocess
 
 # Detect the architecture of the system and set the counters for MAX_VALUES
 # appropriately. Otherwise, rolling over counters will cause incorrect or
@@ -57,7 +62,7 @@ def get_hostname(config, method=None):
             proc = subprocess.Popen(config['hostname'],
                                     shell=True,
                                     stdout=subprocess.PIPE)
-            raw_hostname = proc.communicate()[0].strip()
+            raw_hostname = proc.communicate(timeout=5)[0].strip()
             if proc.returncode == 0:  # Only try to parse if call successful.
                 hostname = _parse_shell_hostname(config, raw_hostname)
             else:

@@ -7,10 +7,15 @@ A collector for publishing Scribe metrics from a local instance.
 
  * A local install of scribe_ctrl.
 """
+import os
+import sys
 
-import subprocess
 import diamond.collector
 
+if os.name == 'posix' and sys.version_info[0] < 3:
+    import subprocess32 as subprocess
+else:
+    import subprocess
 
 class ScribeCollector(diamond.collector.Collector):
 
@@ -42,7 +47,8 @@ class ScribeCollector(diamond.collector.Collector):
             'path': 'scribe',
             'ports': '1464',
             'merge_sources': True,
-            'bin': 'scribe_ctrl'
+            'bin': 'scribe_ctrl',
+            'subprocess_timeout': 10
         })
         return config
 
@@ -69,7 +75,8 @@ class ScribeCollector(diamond.collector.Collector):
         command = [self.config['bin'], 'counters', str(port)]
         try:
             proc = subprocess.Popen(command, stdout=subprocess.PIPE)
-            out, _ = proc.communicate()
+            timeout = int(self.config['subprocess_timeout'])
+            out, _ = proc.communicate(timeout=timeout)
 
             return self._parse_raw_metrics(out)
         except Exception:
