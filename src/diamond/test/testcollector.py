@@ -80,11 +80,11 @@ class BaseCollectorTest(unittest.TestCase):
             'hostname_cache_expiration_interval': '300'
         }
         # Should fail the first time.
+        patch_time.return_value = 0
         c = Collector(config, [])
         self.assertRaises(CalledProcessError, c.get_hostname)
 
         # Success
-        patch_time.return_value = 0
         config['collectors']['default']['hostname'] = 'echo custom.localhost'
         c = Collector(config, [])
         self.assertEquals('custom.localhost', c.get_hostname())
@@ -115,11 +115,11 @@ class BaseCollectorTest(unittest.TestCase):
             'hostname_cache_skip_errors': True
         }
         # Should fail the first time.
+        patch_time.return_value = 0
         c = Collector(config, [])
         self.assertRaises(CalledProcessError, c.get_hostname)
 
         # Success
-        patch_time.return_value = 0
         config['collectors']['default']['hostname'] = 'echo custom.localhost'
         c = Collector(config, [])
         self.assertEquals('custom.localhost', c.get_hostname())
@@ -173,13 +173,13 @@ class BaseCollectorTest(unittest.TestCase):
             'shell_json_key': 'test_key'
         }
         # Should fail the first time.
+        patch_time.return_value = 0
         c = Collector(config, [])
         self.assertRaises(CalledProcessError, c.get_hostname)
 
         script = 'python -c "import json; print json.dumps({\'test_key\': \'test_value\'})"'
 
         # Success
-        patch_time.return_value = 0
         config['collectors']['default']['hostname'] = script
         c = Collector(config, [])
         self.assertEquals('test_value', c.get_hostname())

@@ -24,12 +24,18 @@ Metrics are collected as:
 
 import json
 from itertools import chain
+import os
 import re
-import subprocess
+import sys
 import urllib2
 import diamond.collector
 import diamond.convertor
 from diamond.collector import str_to_bool
+
+if os.name == 'posix' and sys.version_info[0] < 3:
+    import subprocess32 as subprocess
+else:
+    import subprocess
 
 # Metric Types
 GAUGE = 'GAUGE'
@@ -200,7 +206,8 @@ class MesosCollector(diamond.collector.Collector):
             'slave_service': 'mesos.slave',
             'cluster_identifiers': ['group', 'cluster'],
             # Default numeric output.
-            'byte_unit': ['mb']
+            'byte_unit': ['mb'],
+            'subprocess_timeout': 15
             })
         return config
 
@@ -389,7 +396,8 @@ class MesosCollector(diamond.collector.Collector):
                 command = ['du', '-s', '-k', directory]
                 try:
                     proc = subprocess.Popen(command, stdout=subprocess.PIPE)
-                    out, _ = proc.communicate()
+                    timeout = int(self.config['subprocess_timeout'])
+                    out, _ = proc.communicate(timeout=timeout)
 
                     disk_used = int(out.split('\t')[0]) * Size.KB
                     disk_limit = executor_state['resources']['disk'] * Size.MB

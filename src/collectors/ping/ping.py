@@ -32,12 +32,16 @@ for your targets in pairs like:
 We extract out the key after target_ and use it in the graphite node we push.
 
 """
-
-import subprocess
-import diamond.collector
 import os
+import sys
+
+import diamond.collector
 from diamond.collector import str_to_bool
 
+if os.name == 'posix' and sys.version_info[0] < 3:
+    import subprocess32 as subprocess
+else:
+    import subprocess
 
 class PingCollector(diamond.collector.Collector):
 
@@ -61,7 +65,8 @@ class PingCollector(diamond.collector.Collector):
             'bin':              '/bin/ping',
             'use_sudo':         False,
             'sudo_cmd':         '/usr/bin/sudo',
-            'timeout':          None
+            'timeout':          None,
+            'subprocess_timeout': 15
         })
         return config
 
@@ -85,9 +90,10 @@ class PingCollector(diamond.collector.Collector):
                 if str_to_bool(self.config['use_sudo']):
                     command.insert(0, self.config['sudo_cmd'])
 
+                timeout = int(self.config['subprocess_timeout'])
                 ping = subprocess.Popen(
-                    command, stdout=subprocess.PIPE).communicate()[0].strip(
-                    ).split("\n")[-1]
+                    command, stdout=subprocess.PIPE).communicate(
+                        timeout=timeout)[0].strip().split("\n")[-1]
 
                 # Linux
                 if ping.startswith('rtt'):
