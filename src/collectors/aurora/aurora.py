@@ -299,6 +299,7 @@ class AuroraCollector(diamond.collector.Collector):
         ]
 
         self.raw_stats_only = str_to_bool(self.config['raw_stats_only'])
+        self.collect_quota = str_to_bool(self.config['collect_quota'])
 
     def get_default_config_help(self):
         config_help = super(AuroraCollector, self).get_default_config_help()
@@ -318,7 +319,10 @@ class AuroraCollector(diamond.collector.Collector):
             'path': 'aurora',
             'thermos_executor_cpu_overhead': 0.25,
             'thermos_executor_mem_overhead': 128,
-            'raw_stats_only': False
+            'raw_stats_only': False,
+            'collect_quota': True,
+            'quota_service': 'aurora.quota',
+            'quota_prefix': 'sd'
         })
         return config
 
@@ -480,6 +484,20 @@ class AuroraCollector(diamond.collector.Collector):
         name = self._format_identifier(name)
         self.publish(name, value, metric_type=metric_type, source=source)
 
+    def _publish_quota_metrics(self, raw_data):
+        """
+        Publishes quota information per-role.
+        """
+        prefix = self.config.get('quota_prefix')
+        for role, values in raw_data.items():
+            source = '.'.join(filter(None, (prefix, role)))
+            for name, value in values.items():
+                self.publish(
+                    name,
+                    value,
+                    source=source,
+                    service=self.config.get('quota_service'))
+
     def collect(self):
         """
         Runs collection processes against all available endpoints.
@@ -518,6 +536,10 @@ class AuroraCollector(diamond.collector.Collector):
                 # Publish explicitly exposed metrics.
                 for raw_name, raw_value in metrics.iteritems():
                     self._publish_metrics(raw_name, raw_value, cluster)
+
+                if self.collect_quota:
+                    quota_data = self._fetch_data(host, port, 'quotas')
+                    self._publish_quota_metrics(quota_data)
 
             except Exception:
                 self.log.exception(
