@@ -11,6 +11,7 @@ Collects stats from bind 9.5's statistics server
 """
 
 import diamond.collector
+from diamond.collector import str_to_bool
 import sys
 import urllib2
 
@@ -22,6 +23,9 @@ else:
 
 
 class BindCollector(diamond.collector.Collector):
+    def __init__(self, config, handlers):
+        super(BindCollector, self).__init__(config, handlers)
+        self.raw_stats_only = str_to_bool(self.config['raw_stats_only'])
 
     def get_default_config_help(self):
         config_help = super(BindCollector, self).get_default_config_help()
@@ -36,6 +40,8 @@ class BindCollector(diamond.collector.Collector):
             + " - memory (Global memory usage) \n",
             'publish_view_bind': "",
             'publish_view_meta': "",
+            'raw_stats_only': "If true, the raw statistic value is published "
+                              "instead of the derivative."
         })
         return config_help
 
@@ -64,14 +70,14 @@ class BindCollector(diamond.collector.Collector):
             # By default we don't publish these special views
             'publish_view_bind': False,
             'publish_view_meta': False,
+            'raw_stats_only': False
         })
         return config
 
     def clean_counter(self, name, value):
         name = name.replace("+", "plus")
-        value = self.derivative(name, value)
-        if value < 0:
-            value = 0
+        if not self.raw_stats_only:
+            value = max(self.derivative(name, value), 0)
         self.publish(name, value)
 
     def collect(self):
