@@ -207,7 +207,8 @@ class MesosCollector(diamond.collector.Collector):
             'cluster_identifiers': ['group', 'cluster'],
             # Default numeric output.
             'byte_unit': ['mb'],
-            'subprocess_timeout': 15
+            'subprocess_timeout': 15,
+            'executor_names': ['kafka.broker', 'aurora.task']
             })
         return config
 
@@ -292,11 +293,14 @@ class MesosCollector(diamond.collector.Collector):
             executor_state = state_data.get(executor['executor_id'])
             if name == 'aurora.gc':
                 continue
-            else:
+            elif name in self.config['executor_names']:
                 job_name = executor['source']
                 instance_id = job_name.split('.')[-1]
                 base_job_name = job_name[0:job_name.rindex('.')]
                 source = '.'.join(filter(None, (cluster, base_job_name)))
+            else:
+                source = '.'.join((cluster, name))
+                instance_id = 0
 
             cpu = self._get_cpu_metrics(source, instance_id, stats)
             memory = self._get_memory_metrics(stats, state)
