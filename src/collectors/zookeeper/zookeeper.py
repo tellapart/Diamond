@@ -82,7 +82,7 @@ class ZookeeperCollector(diamond.collector.Collector):
 
     def get_stats(self, host, port):
         # stuff that's always ignored, aren't 'stats'
-        ignored = ('zk_version', 'zk_server_state')
+        ignored = ('zk_version',)
         pid = None
 
         stats = {}
@@ -95,7 +95,15 @@ class ZookeeperCollector(diamond.collector.Collector):
 
             if pieces[0] in ignored:
                 continue
-            stats[pieces[0]] = pieces[1]
+            if pieces[0] == 'zk_server_state':
+                if pieces[1] == 'leader':
+                    stats['zk_is_leader'] = 1
+                    stats['zk_is_follower'] = 0
+                else:
+                    stats['zk_is_leader'] = 0
+                    stats['zk_is_follower'] = 1
+            else:
+                stats[pieces[0]] = pieces[1]
 
         # get max connection limit
         self.log.debug('pid %s', pid)
