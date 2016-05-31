@@ -181,6 +181,8 @@ class MesosCollector(diamond.collector.Collector):
         self.log.debug('Setting cluster identifiers: %s', ci)
         self.cluster_identifiers = ci
 
+        self.source_prefix = self.config.get('source_prefix')
+
     def get_default_config_help(self):
         config_help = super(MesosCollector, self).get_default_config_help()
         config_help.update({
@@ -208,7 +210,8 @@ class MesosCollector(diamond.collector.Collector):
             # Default numeric output.
             'byte_unit': ['mb'],
             'subprocess_timeout': 15,
-            'executor_names': ['kafka.broker', 'aurora.task']
+            'executor_names': ['kafka.broker', 'aurora.task'],
+            'source_prefix': ''
             })
         return config
 
@@ -297,9 +300,11 @@ class MesosCollector(diamond.collector.Collector):
                 job_name = executor['source']
                 instance_id = job_name.split('.')[-1]
                 base_job_name = job_name[0:job_name.rindex('.')]
-                source = '.'.join(filter(None, (cluster, base_job_name)))
+                source = '.'.join(
+                    filter(None, (self.source_prefix, cluster, base_job_name)))
             else:
-                source = '.'.join((cluster, name))
+                source = '.'.join(
+                    filter(None, (self.source_prefix, cluster, name)))
                 instance_id = 0
 
             cpu = self._get_cpu_metrics(source, instance_id, stats)

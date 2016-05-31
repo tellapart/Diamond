@@ -106,6 +106,7 @@ class TestAuroraCollector(CollectorTestCase):
 
         config = get_collector_config('AuroraCollector', {
             'hosts': 'test@localhost:8081',
+            'collect_quota': False
         })
 
         cluster_override_collector = AuroraCollector(config, None)
