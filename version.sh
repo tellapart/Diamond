@@ -52,7 +52,7 @@ while getopts "mnr" opt; do
     esac
 done
 
-VERSION="${VERSION_MAJ}.${VERSION_MIN}.${VERSION_REV}${LOCAL_REV}"
+VERSION="3.5.9${LOCAL_REV}"
 
 if [ -e src/diamond/version.py.tmpl ]
 then

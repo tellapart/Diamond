@@ -94,7 +94,13 @@ class BindCollector(diamond.collector.Collector):
             raise ValueError("Corrupt XML file, no statistics found")
 
         root = tree.find('bind/statistics')
+        if root:
+            self._collect_v2(root)
+        else:
+            root = tree.getroot()
+            self._collect_v3(root)
 
+    def _collect_v2(self, root):
         if 'resolver' in self.config['publish']:
             for view in root.findall('views/view'):
                 name = view.find('name').text
@@ -154,6 +160,57 @@ class BindCollector(diamond.collector.Collector):
                     'sockstat.%s' % counter.find('name').text,
                     int(counter.find('counter').text)
                 )
+
+        if 'memory' in self.config['publish']:
+            for counter in root.find('memory/summary').getchildren():
+                self.publish(
+                    'memory.%s' % counter.tag,
+                    int(counter.text)
+                )
+
+    def _publish_v3_counter(self, pattern, counter):
+        self.clean_counter(
+            pattern % counter.get('name'),
+            int(counter.text)
+        )
+
+    def _collect_v3(self, root):
+        if 'resolver' in self.config['publish']:
+            for view in root.findall('views/view'):
+                name = view.get('name')
+                if name == '_bind' and not self.config['publish_view_bind']:
+                    continue
+                if name == '_meta' and not self.config['publish_view_meta']:
+                    continue
+                nzones = len(view.findall('zones/zone'))
+                self.publish('view.%s.zones' % name, nzones)
+                for counter in view.findall("counters[@type='resqtype']/"):
+                    self._publish_v3_counter('view.%s.query.%%s' % name, counter)
+                for counter in view.findall("counters[@type='resstats']/"):
+                    self._publish_v3_counter('view.%s.resstat.%%s' % name, counter)
+                for counter in view.findall('cache/rrset'):
+                    self.clean_counter(
+                        'view.%s.cache.%s' % (
+                            name, counter.find('name').text.replace('!',
+                                'NOT_')),
+                        int(counter.find('counter').text)
+                    )
+
+        if 'server' in self.config['publish']:
+            for counter in root.findall("server/counters[@type='opcode']/"):
+                self._publish_v3_counter('requests.%s', counter)
+            for counter in root.findall("server/counters[@type='qtype']/"):
+                self._publish_v3_counter('queries.%s', counter)
+            for counter in root.findall("server/counters[@type='nsstat']/"):
+                self._publish_v3_counter('nsstat.%s', counter)
+
+        if 'zonemgmt' in self.config['publish']:
+            for counter in root.findall("server/counters[@type='zonestat']/"):
+                self._publish_v3_counter('zonestat.%s', counter)
+
+        if 'sockets' in self.config['publish']:
+            for counter in root.findall("server/counters[@type='sockstat']/"):
+                self._publish_v3_counter('sockstat.%s', counter)
 
         if 'memory' in self.config['publish']:
             for counter in root.find('memory/summary').getchildren():
