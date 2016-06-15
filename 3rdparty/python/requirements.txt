@@ -2,6 +2,7 @@ configobj==5.0.6
 librato-metrics==0.8.5
 oauthlib==1.0.3
 psutil==3.3.0
+PyYAML==3.11
 requests==2.9.1
 requests-oauthlib==0.6.0
 subprocess32==3.2.7
