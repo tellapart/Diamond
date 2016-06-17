@@ -322,6 +322,7 @@ class AuroraCollector(diamond.collector.Collector):
             'raw_stats_only': False,
             'collect_quota': True,
             'quota_service': 'aurora.quota',
+            'quota_group': 'aurora.quota',
             'quota_prefix': 'sd'
         })
         return config
@@ -496,6 +497,7 @@ class AuroraCollector(diamond.collector.Collector):
                     name,
                     value,
                     source=source,
+                    groups=[self.config.get('quota_group')],
                     service=self.config.get('quota_service'))
 
     def collect(self):
