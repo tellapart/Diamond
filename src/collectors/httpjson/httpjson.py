@@ -27,7 +27,8 @@ class HTTPJSONCollector(diamond.collector.Collector):
         default_config = super(HTTPJSONCollector, self).get_default_config()
         default_config.update({
             'path': 'httpjson',
-            'url': 'http://localhost/stat'
+            'url': 'http://localhost/stat',
+            'timeout': 10
         })
         return default_config
 
@@ -43,31 +44,42 @@ class HTTPJSONCollector(diamond.collector.Collector):
                     yield k, v
             else:
                 try:
-                    int(value)
+                    float(value)
                 except ValueError:
                     value = None
                 finally:
                     yield (final_key, value)
 
     def collect(self):
-        url = self.config['url']
+        url_config = self.config['url']
+        timeout = self.config['timeout']
 
-        req = urllib2.Request(url)
-        req.add_header('Content-type', 'application/json')
+        if isinstance(url_config, basestring):
+            url_config = {url_config: {}}
 
-        try:
-            resp = urllib2.urlopen(req)
-        except urllib2.URLError as e:
-            self.log.error("Can't open url %s. %s", url, e)
-        else:
+        for url, options in url_config.items():
+            req = urllib2.Request(url)
+            req.add_header('Content-type', 'application/json')
+            service = options.get('service')
 
-            content = resp.read()
-
+            self.log.info(
+                'Fetching data from %s with service override: %s.',
+                url,
+                service
+            )
             try:
-                data = json.loads(content)
-            except ValueError as e:
-                self.log.error("Can't parse JSON object from %s. %s", url, e)
+                resp = urllib2.urlopen(req, timeout=timeout)
+            except Exception as e:
+                self.log.error("Can't open url %s. %s", url, e)
             else:
-                for metric_name, metric_value in self._json_to_flat_metrics(
-                        "", data):
-                    self.publish(metric_name, metric_value)
+
+                content = resp.read()
+
+                try:
+                    data = json.loads(content)
+                except ValueError as e:
+                    self.log.error(
+                        "Can't parse JSON object from %s. %s", url, e)
+                else:
+                    for m_name, m_value in self._json_to_flat_metrics("", data):
+                        self.publish(m_name, m_value, service=service)
