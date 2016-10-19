@@ -19,7 +19,10 @@ from diamond.metric import Metric
 from error import DiamondException
 
 if os.name == 'posix' and sys.version_info[0] < 3:
-    import subprocess32 as subprocess
+    import subprocess
+    import subprocess32
+    subprocess32._args_from_interpreter_flags = subprocess._args_from_interpreter_flags
+    sys.modules["subprocess"] = subprocess32
 else:
     import subprocess
 

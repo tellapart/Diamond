@@ -30,8 +30,13 @@ except ImportError:
     setproctitle = None
 
 if os.name == 'posix' and sys.version_info[0] < 3:
+    import subprocess
     import subprocess32
-    sys.modules['subprocess'] = subprocess32
+    subprocess32._args_from_interpreter_flags = subprocess._args_from_interpreter_flags
+    sys.modules["subprocess"] = subprocess32
+else:
+    import subprocess
+
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__))))
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__),
