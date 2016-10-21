@@ -25,8 +25,8 @@ TEST_FILE_SIZE_BYTES = 1048576  # 1MB
 
 def _format_metric(device, mount_point, metric):
     return '%s.%s.%s' % (
-        device.strip('/').replace('/','_'),
-        'root' if mount_point == '/' else mount_point.strip('/').replace('/','_'),
+        device.strip('/').replace('/', '_'),
+        'root' if mount_point == '/' else mount_point.strip('/').replace('/', '_'),
         metric)
 
 

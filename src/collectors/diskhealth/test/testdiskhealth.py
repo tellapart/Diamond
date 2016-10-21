@@ -59,7 +59,7 @@ class TestDiskHealtCollector(CollectorTestCase):
           if self.mode == self.CANT_WRITE:
             raise Exception('Cant write')
           elif self.mode == self.TIMEOUT:
-            sleep(2)
+            sleep(20)
           self.data = data
 
         def read(self):
