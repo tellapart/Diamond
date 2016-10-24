@@ -82,7 +82,11 @@ class TestDiskHealtCollector(CollectorTestCase):
              Mock(return_value=self.MockMemmoryFile()))
 
         open_mock = patch_open.start()
-        result = _test_disk('/dev/md0', '/mnt')
+        result = _test_disk('/dev/md0',
+                '/mnt',
+                self.collector.TEST_FILE_NAME,
+                self.collector.TEST_FILE_SIZE,
+                False)
         patch_open.stop()
 
         self.assertTrue(result.get('dev_md0.mnt.write_time') >= 0)
@@ -96,12 +100,16 @@ class TestDiskHealtCollector(CollectorTestCase):
              '__builtin__.open',
              Mock(return_value=self.MockMemmoryFile(self.MockMemmoryFile.CANT_WRITE)))
         open_mock = patch_open.start()
-        result = _test_disk('/dev/md0', '/mnt')
+        result = _test_disk('/dev/md0',
+                '/mnt',
+                self.collector.TEST_FILE_NAME,
+                self.collector.TEST_FILE_SIZE,
+                False)
         patch_open.stop()
 
         self.assertTrue(result.get('dev_md0.mnt.write_time') == None)
         self.assertTrue(result.get('dev_md0.mnt.read_time') == None)
-        self.assertTrue(result.get('dev_md0.mnt.read_error') == None)
+        self.assertTrue(result.get('dev_md0.mnt.read_error') == 1)
         self.assertTrue(result.get('dev_md0.mnt.write_error') == 1)
         return result
     #
@@ -110,7 +118,11 @@ class TestDiskHealtCollector(CollectorTestCase):
              '__builtin__.open',
              Mock(return_value=self.MockMemmoryFile(self.MockMemmoryFile.CANT_READ)))
         open_mock = patch_open.start()
-        result = _test_disk('/dev/md0', '/mnt')
+        result = _test_disk('/dev/md0',
+                '/mnt',
+                self.collector.TEST_FILE_NAME,
+                self.collector.TEST_FILE_SIZE,
+                False)
         patch_open.stop()
 
         self.assertTrue(result.get('dev_md0.mnt.write_time') >= 0)
@@ -124,13 +136,17 @@ class TestDiskHealtCollector(CollectorTestCase):
              '__builtin__.open',
              Mock(return_value=self.MockMemmoryFile(self.MockMemmoryFile.BAD_READ)))
         open_mock = patch_open.start()
-        result = _test_disk('/dev/md0', '/mnt')
+        result = _test_disk('/dev/md0',
+                '/mnt',
+                self.collector.TEST_FILE_NAME,
+                self.collector.TEST_FILE_SIZE,
+                True)
         patch_open.stop()
 
-        self.assertTrue(result.get('dev_md0.mnt.write_time') >= 0)
-        self.assertTrue(result.get('dev_md0.mnt.read_time') >= 0)
-        self.assertTrue(result.get('dev_md0.mnt.read_error') == 1)
-        self.assertTrue(result.get('dev_md0.mnt.write_error') == 0)
+        self.assertTrue(result.get('/dev/md0./mnt.write_time') >= 0, result)
+        self.assertTrue(result.get('/dev/md0./mnt.read_time') >= 0)
+        self.assertTrue(result.get('/dev/md0./mnt.read_error') == 1)
+        self.assertTrue(result.get('/dev/md0./mnt.write_error') == 0)
         return result
 
     @patch.object(Collector, 'publish')

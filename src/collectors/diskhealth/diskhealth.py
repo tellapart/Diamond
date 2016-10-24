@@ -12,6 +12,7 @@ that should be checked. The test performa a write and a read in each mount.
 
 """
 
+from diamond.collector import str_to_bool
 import diamond.convertor
 
 import time
@@ -20,21 +21,21 @@ import re
 
 from multiprocessing import Pool, TimeoutError
 
-TEST_FILE_SIZE_BYTES = 1048576  # 1MB
 
-
-def _format_metric(device, mount_point, metric):
+def _format_metric(device, mount_point, metric, raw_stats_only):
+    if raw_stats_only:
+        return '%s.%s.%s' % (device, mount_point, metric)
     return '%s.%s.%s' % (
         device.strip('/').replace('/', '_'),
         'root' if mount_point == '/' else mount_point.strip('/').replace('/', '_'),
         metric)
 
 
-def _test_disk(device, mount_point):
+def _test_disk(device, mount_point, file_name, file_size, raw_stats_only):
     metrics = {}
-    filename = os.path.join(mount_point, '.diamond_diskhealth')
+    filename = os.path.join(mount_point, file_name)
 
-    data = os.urandom(TEST_FILE_SIZE_BYTES)
+    data = os.urandom(file_size)
     start_time = time.time()
     try:
         f = open(filename, 'wb')
@@ -42,25 +43,51 @@ def _test_disk(device, mount_point):
         f.flush()
         f.close()
         write_time = time.time()
-        metrics[_format_metric(device, mount_point, 'write_error')] = 0
-        metrics[_format_metric(device, mount_point, 'write_time')] = write_time  - start_time
+        metrics[_format_metric(device,
+                mount_point,
+                'write_error',
+                raw_stats_only)] = 0
+        metrics[_format_metric(device,
+                mount_point,
+                'write_time',
+                raw_stats_only)] = write_time  - start_time
         try:
             f = open(filename, 'r')
             read_data = f.read()
             f.close()
             read_time = time.time()
-            metrics[_format_metric(device, mount_point, 'read_error')] = 0 if read_data == data else 1
-            metrics[_format_metric(device, mount_point, 'read_time')] = read_time - write_time
+            metrics[_format_metric(device,
+                    mount_point,
+                    'read_error',
+                    raw_stats_only)] = 0 if read_data == data else 1
+            metrics[_format_metric(device,
+                    mount_point,
+                    'read_time',
+                    raw_stats_only)] = read_time - write_time
         except Exception as e:
-            metrics[_format_metric(device, mount_point, 'read_error')] = 1
+            metrics[_format_metric(device,
+                    mount_point,
+                    'read_error',
+                    raw_stats_only)] = 1
     except Exception as e:
-        metrics[_format_metric(device, mount_point, 'write_error')] = 1
+        metrics[_format_metric(device,
+                mount_point,
+                'read_error',
+                raw_stats_only)] = 1
+        metrics[_format_metric(device,
+                mount_point,
+                'write_error',
+                raw_stats_only)] = 1
+    finally:
+      f.close()
     return metrics
 
 
 class DiskHealthCollector(diamond.collector.Collector):
 
     MAX_THREADS = 5
+    TEST_FILE_NAME = '.diamond_diskhealth'
+    TEST_FILE_SIZE = 1048576  # 1MB
     TEST_TIMEOUT_SEC = 5
     SUPPORTED_FS_TYPES = [
         'btrfs',
@@ -79,7 +106,12 @@ class DiskHealthCollector(diamond.collector.Collector):
             'devices': "A regex of which devices to gather metrics for."
                        + " Defaults to md, sd, xvd, disk, and dm devices",
             'fs_types': "A list of fs types for which to perform the health test"
-                       + " Defaults to btrfs, ext2, ext3, ext4, xfs."
+                       + " Defaults to btrfs, ext2, ext3, ext4, xfs.",
+            'raw_stats_only': "If True will not format device names",
+            'test_file_name': "The name of the test file that is written."
+                       + " Defaults to '.diamond_diskhealth'",
+            'test_file_size': "The size of the test file in bytes that is written"
+                       + " and read during execution. Defaults to 1048576 (1MB)."
         })
         return config_help
 
@@ -96,7 +128,10 @@ class DiskHealthCollector(diamond.collector.Collector):
                          + '|x?vd[a-z]+[0-9]*$'
                          + '|disk[0-9]+$'
                          + '|dm\-[0-9]+$'),
-            'fs_types': ','.join(self.SUPPORTED_FS_TYPES)
+            'fs_types': ','.join(self.SUPPORTED_FS_TYPES),
+            'raw_stats_only': False,
+            'test_file_name': self.TEST_FILE_NAME,
+            'test_file_size': self.TEST_FILE_SIZE
         })
         return config
 
@@ -114,6 +149,7 @@ class DiskHealthCollector(diamond.collector.Collector):
         fs_types = set(self.config['fs_types'].split(','))
 
         if os.access('/proc/mounts', os.R_OK):
+          try:
             fp = open('/proc/mounts')
             for line in fp:
                 columns = line.split()
@@ -129,21 +165,27 @@ class DiskHealthCollector(diamond.collector.Collector):
 
                 result[device] = mount_point
             fp.close()
+          finally:
+            fp.close()
         return result
 
     def collect(self):
+        raw_stats_only = str_to_bool(self.config['raw_stats_only'])
+        test_file_name = self.config['test_file_name']
+        test_file_size = self.config['test_file_size']
         disks = self.get_disks()
         pool = Pool(min(len(disks), self.MAX_THREADS))
         prcs_async = {pool.apply_async(_test_disk,
-                args=[device, mount_point]): [device, mount_point]
+                args=[device, mount_point, test_file_name, test_file_size, raw_stats_only]):
+                [device, mount_point]
                 for device, mount_point in disks.items()}
         results = {}
         for p, args in prcs_async.items():
             try:
                 results.update(p.get(self.TEST_TIMEOUT_SEC))
-                results[_format_metric(args[0], args[1], 'timeout')] = 0
+                results[_format_metric(args[0], args[1], 'timeout', raw_stats_only)] = 0
             except TimeoutError as e:
-                results[_format_metric(args[0], args[1], 'timeout')] = 1
+                results[_format_metric(args[0], args[1], 'timeout', raw_stats_only)] = 1
 
         pool.close()
         for k, v in results.items():
