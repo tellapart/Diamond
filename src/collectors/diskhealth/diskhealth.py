@@ -24,11 +24,8 @@ from multiprocessing import Pool, TimeoutError
 
 def _format_metric(device, mount_point, metric, raw_stats_only):
     if raw_stats_only:
-        return '%s.%s.%s' % (device, mount_point, metric)
-    return '%s.%s.%s' % (
-        device.strip('/').replace('/', '_'),
-        'root' if mount_point == '/' else mount_point.strip('/').replace('/', '_'),
-        metric)
+        return '%s/%s/%s' % (device, mount_point, metric)
+    return '%s.%s.%s' % (device, mount_point.replace('/', '_'), metric)
 
 
 def _test_disk(device, mount_point, file_name, file_size, raw_stats_only):
@@ -153,11 +150,11 @@ class DiskHealthCollector(diamond.collector.Collector):
             fp = open('/proc/mounts')
             for line in fp:
                 columns = line.split()
-                device = columns[0]
-                mount_point = columns[1]
+                device = columns[0].strip('/').replace('dev/','',1)
+                mount_point = 'root' if columns[1] == '/' else columns[1].strip('/')
                 fs_type = columns[2]
 
-                if not reg.match(os.path.relpath(device, '/dev')):
+                if not reg.match(device):
                     continue
 
                 if fs_type not in fs_types:
