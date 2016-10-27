@@ -23,9 +23,10 @@ from multiprocessing import Pool, TimeoutError
 
 
 def _format_metric(device, mount_point, metric, raw_stats_only):
+    mount = 'root' if mount_point == '/' else mount_point.strip('/')
     if raw_stats_only:
-        return '%s/%s/%s' % (device, mount_point, metric)
-    return '%s.%s.%s' % (device, mount_point.replace('/', '_'), metric)
+        return '%s/%s/%s' % (device, mount, metric)
+    return '%s.%s.%s' % (device, mount.replace('/', '_'), metric)
 
 
 def _test_disk(device, mount_point, file_name, file_size, raw_stats_only):
@@ -34,11 +35,13 @@ def _test_disk(device, mount_point, file_name, file_size, raw_stats_only):
 
     data = os.urandom(file_size)
     start_time = time.time()
+    message = None
+    wf = None
     try:
-        f = open(filename, 'wb')
-        f.write(data)
-        f.flush()
-        f.close()
+        wf = open(filename, 'wb')
+        wf.write(data)
+        wf.flush()
+        wf.close()
         write_time = time.time()
         metrics[_format_metric(device,
                 mount_point,
@@ -46,12 +49,12 @@ def _test_disk(device, mount_point, file_name, file_size, raw_stats_only):
                 raw_stats_only)] = 0
         metrics[_format_metric(device,
                 mount_point,
-                'write_time',
-                raw_stats_only)] = write_time  - start_time
+                'write_time_ms',
+                raw_stats_only)] = (write_time - start_time) * 1000
+        rf = None
         try:
-            f = open(filename, 'r')
-            read_data = f.read()
-            f.close()
+            rf = open(filename, 'r')
+            read_data = rf.read()
             read_time = time.time()
             metrics[_format_metric(device,
                     mount_point,
@@ -59,14 +62,19 @@ def _test_disk(device, mount_point, file_name, file_size, raw_stats_only):
                     raw_stats_only)] = 0 if read_data == data else 1
             metrics[_format_metric(device,
                     mount_point,
-                    'read_time',
-                    raw_stats_only)] = read_time - write_time
+                    'read_time_ms',
+                    raw_stats_only)] = (read_time - write_time) * 1000
         except Exception as e:
+            message = 'Read error on %s %s \n %s' % (device, mount_point, e)
             metrics[_format_metric(device,
                     mount_point,
                     'read_error',
                     raw_stats_only)] = 1
+        finally:
+            if rf:
+              rf.close()
     except Exception as e:
+        message = 'Write error on %s %s \n %s' % (device, mount_point, e)
         metrics[_format_metric(device,
                 mount_point,
                 'read_error',
@@ -76,8 +84,9 @@ def _test_disk(device, mount_point, file_name, file_size, raw_stats_only):
                 'write_error',
                 raw_stats_only)] = 1
     finally:
-      f.close()
-    return metrics
+      if wf:
+        wf.close()
+    return metrics, message
 
 
 class DiskHealthCollector(diamond.collector.Collector):
@@ -145,24 +154,25 @@ class DiskHealthCollector(diamond.collector.Collector):
         reg = re.compile(exp)
         fs_types = set(self.config['fs_types'].split(','))
 
-        if os.access('/proc/mounts', os.R_OK):
-          try:
-            fp = open('/proc/mounts')
-            for line in fp:
-                columns = line.split()
-                device = columns[0].strip('/').replace('dev/','',1)
-                mount_point = 'root' if columns[1] == '/' else columns[1].strip('/')
-                fs_type = columns[2]
+        try:
+          fp = open('/proc/mounts')
+          for line in fp:
+              columns = line.split()
+              device = columns[0].strip('/').replace('dev/','',1)
+              mount_point = columns[1]
+              fs_type = columns[2]
 
-                if not reg.match(device):
-                    continue
+              if not reg.match(device):
+                  continue
 
-                if fs_type not in fs_types:
-                    continue
+              if fs_type not in fs_types:
+                  continue
 
-                result[device] = mount_point
-            fp.close()
-          finally:
+              result[device] = mount_point
+        except Exception as e:
+            self.log.debug('Could not read /proc/mounts!')
+            self.log.exception(e)
+        finally:
             fp.close()
         return result
 
@@ -174,16 +184,18 @@ class DiskHealthCollector(diamond.collector.Collector):
         pool = Pool(min(len(disks), self.MAX_THREADS))
         prcs_async = {pool.apply_async(_test_disk,
                 args=[device, mount_point, test_file_name, test_file_size, raw_stats_only]):
-                [device, mount_point]
-                for device, mount_point in disks.items()}
+                [device, mount_point] for device, mount_point in disks.items()}
         results = {}
         for p, args in prcs_async.items():
             try:
-                results.update(p.get(self.TEST_TIMEOUT_SEC))
-                results[_format_metric(args[0], args[1], 'timeout', raw_stats_only)] = 0
+                result, message  = p.get(self.TEST_TIMEOUT_SEC)
+                if message :
+                    self.log.debug(message)
+                results.update(result)
+                results[_format_metric(args[0], args[1], 'timeout_error', raw_stats_only)] = 0
             except TimeoutError as e:
-                results[_format_metric(args[0], args[1], 'timeout', raw_stats_only)] = 1
-
+                results[_format_metric(args[0], args[1], 'timeout_error', raw_stats_only)] = 1
+                self.log.debug('Writing to disk timed out %s %s.', args[0], args[1])
         pool.close()
         for k, v in results.items():
             self.publish(k, v)

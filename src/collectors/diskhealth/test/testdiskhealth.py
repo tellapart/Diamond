@@ -36,8 +36,8 @@ class TestDiskHealtCollector(CollectorTestCase):
         result = self.collector.get_disks()
         patch_open.stop()
 
-        self.assertTrue(result.get('md0') == 'mnt')
-        self.assertTrue(result.get('xvda1') == 'root')
+        self.assertTrue(result.get('md0') == '/mnt')
+        self.assertTrue(result.get('xvda1') == '/')
 
         self.assertEqual(len(result), 2)
 
@@ -82,15 +82,15 @@ class TestDiskHealtCollector(CollectorTestCase):
              Mock(return_value=self.MockMemmoryFile()))
 
         open_mock = patch_open.start()
-        result = _test_disk('md0',
+        result, message = _test_disk('md0',
                 'mnt',
                 self.collector.TEST_FILE_NAME,
                 self.collector.TEST_FILE_SIZE,
                 False)
         patch_open.stop()
 
-        self.assertTrue(result.get('md0.mnt.write_time') >= 0)
-        self.assertTrue(result.get('md0.mnt.read_time') >= 0)
+        self.assertTrue(result.get('md0.mnt.write_time_ms') >= 0)
+        self.assertTrue(result.get('md0.mnt.read_time_ms') >= 0)
         self.assertTrue(result.get('md0.mnt.read_error') == 0)
         self.assertTrue(result.get('md0.mnt.write_error') == 0)
         return result
@@ -100,15 +100,15 @@ class TestDiskHealtCollector(CollectorTestCase):
              '__builtin__.open',
              Mock(return_value=self.MockMemmoryFile(self.MockMemmoryFile.CANT_WRITE)))
         open_mock = patch_open.start()
-        result = _test_disk('md0',
+        result, message = _test_disk('md0',
                 'mnt',
                 self.collector.TEST_FILE_NAME,
                 self.collector.TEST_FILE_SIZE,
                 False)
         patch_open.stop()
 
-        self.assertTrue(result.get('md0.mnt.write_time') == None)
-        self.assertTrue(result.get('md0.mnt.read_time') == None)
+        self.assertTrue(result.get('md0.mnt.write_time_ms') == None)
+        self.assertTrue(result.get('md0.mnt.read_time_ms') == None)
         self.assertTrue(result.get('md0.mnt.read_error') == 1)
         self.assertTrue(result.get('md0.mnt.write_error') == 1)
         return result
@@ -118,15 +118,15 @@ class TestDiskHealtCollector(CollectorTestCase):
              '__builtin__.open',
              Mock(return_value=self.MockMemmoryFile(self.MockMemmoryFile.CANT_READ)))
         open_mock = patch_open.start()
-        result = _test_disk('md0',
+        result, message = _test_disk('md0',
                 'mnt',
                 self.collector.TEST_FILE_NAME,
                 self.collector.TEST_FILE_SIZE,
                 False)
         patch_open.stop()
 
-        self.assertTrue(result.get('md0.mnt.write_time') >= 0)
-        self.assertTrue(result.get('md0.mnt.read_time') == None)
+        self.assertTrue(result.get('md0.mnt.write_time_ms') >= 0)
+        self.assertTrue(result.get('md0.mnt.read_time_ms') == None)
         self.assertTrue(result.get('md0.mnt.read_error') == 1)
         self.assertTrue(result.get('md0.mnt.write_error') == 0)
         return result
@@ -136,15 +136,15 @@ class TestDiskHealtCollector(CollectorTestCase):
              '__builtin__.open',
              Mock(return_value=self.MockMemmoryFile(self.MockMemmoryFile.BAD_READ)))
         open_mock = patch_open.start()
-        result = _test_disk('md0',
+        result, message = _test_disk('md0',
                 'mnt',
                 self.collector.TEST_FILE_NAME,
                 self.collector.TEST_FILE_SIZE,
                 True)
         patch_open.stop()
 
-        self.assertTrue(result.get('md0/mnt/write_time') >= 0)
-        self.assertTrue(result.get('md0/mnt/read_time') >= 0)
+        self.assertTrue(result.get('md0/mnt/write_time_ms') >= 0)
+        self.assertTrue(result.get('md0/mnt/read_time_ms') >= 0)
         self.assertTrue(result.get('md0/mnt/read_error') == 1)
         self.assertTrue(result.get('md0/mnt/write_error') == 0)
         return result
@@ -162,10 +162,10 @@ class TestDiskHealtCollector(CollectorTestCase):
         metrics = {
           'md0.mnt.read_error': 0,
           'md0.mnt.write_error': 0,
-          'md0.mnt.timeout': 0,
+          'md0.mnt.timeout_error': 0,
           'xvda1.root.read_error': 0,
           'xvda1.root.write_error': 0,
-          'xvda1.root.timeout': 0
+          'xvda1.root.timeout_error': 0
         }
 
         self.assertPublishedMany(publish_mock, metrics)
@@ -181,8 +181,8 @@ class TestDiskHealtCollector(CollectorTestCase):
         self.collector.collect()
         patch_open.stop()
         metrics = {
-          'md0.mnt.timeout': 1,
-          'xvda1.root.timeout': 1
+          'md0.mnt.timeout_error': 1,
+          'xvda1.root.timeout_error': 1
         }
         self.assertPublishedMany(publish_mock, metrics)
 
