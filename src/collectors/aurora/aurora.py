@@ -300,6 +300,7 @@ class AuroraCollector(diamond.collector.Collector):
 
         self.raw_stats_only = str_to_bool(self.config['raw_stats_only'])
         self.collect_quota = str_to_bool(self.config['collect_quota'])
+        self.http_timeout = int(self.config.get('http_timeout'))
 
     def get_default_config_help(self):
         config_help = super(AuroraCollector, self).get_default_config_help()
@@ -323,7 +324,8 @@ class AuroraCollector(diamond.collector.Collector):
             'collect_quota': True,
             'quota_service': 'aurora.quota',
             'quota_group': 'aurora.quota',
-            'quota_prefix': 'sd'
+            'quota_prefix': 'sd',
+            'http_timeout': 30
         })
         return config
 
@@ -418,7 +420,7 @@ class AuroraCollector(diamond.collector.Collector):
         req = urllib2.Request(url, headers=headers,
                               data=None if verb == 'GET' else data or '')
         opener = urllib2.build_opener(NoRedirectHandler)
-        handle = opener.open(req)
+        handle = opener.open(req, timeout=self.http_timeout)
         return json.loads(handle.read())
 
     def _publish_job_metrics(self, job_summary, cluster):

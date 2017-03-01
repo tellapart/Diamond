@@ -99,8 +99,9 @@ class TestMesosCollector(CollectorTestCase):
         fixtures = [self.getFixture('slave_metrics'),
                     StringIO(json.dumps(self.STATE)),
                     StringIO("[]")]
-        patch_urlopen = patch('urllib2.urlopen',
-                              Mock(side_effect=lambda *args: fixtures.pop(0)))
+        patch_urlopen = patch(
+            'urllib2.urlopen',
+            Mock(side_effect=lambda *args, **kwargs: fixtures.pop(0)))
 
         patch_urlopen.start()
         self.collector.collect()
@@ -122,8 +123,9 @@ class TestMesosCollector(CollectorTestCase):
                     StringIO("{}"),
                     StringIO(json.dumps(self.get_state(0, 22, 1))),
                     self.getFixture('slave_perf_2')]
-        patch_urlopen = patch('urllib2.urlopen',
-                              Mock(side_effect=lambda *args: fixtures.pop(0)))
+        patch_urlopen = patch(
+            'urllib2.urlopen',
+            Mock(side_effect=lambda *args, **kwargs: fixtures.pop(0)))
 
         patch_urlopen.start()
         self.collector.collect()
@@ -160,8 +162,9 @@ class TestMesosCollector(CollectorTestCase):
                     StringIO(json.dumps(self.get_state(0, 22, 1))),
                     self.getFixture('slave_perf_3')]
 
-        patch_urlopen = patch('urllib2.urlopen',
-                              Mock(side_effect=lambda *args: fixtures.pop(0)))
+        patch_urlopen = patch(
+            'urllib2.urlopen',
+            Mock(side_effect=lambda *args, **kwargs: fixtures.pop(0)))
 
         patch_urlopen.start()
         self.collector.collect()
@@ -181,8 +184,9 @@ class TestMesosCollector(CollectorTestCase):
                     StringIO(json.dumps(self.get_state(0, 22, 1))),
                     self.getFixture('slave_perf_3')]
 
-        patch_urlopen = patch('urllib2.urlopen',
-                              Mock(side_effect=lambda *args: fixtures.pop(0)))
+        patch_urlopen = patch(
+            'urllib2.urlopen',
+            Mock(side_effect=lambda *args, **kwargs: fixtures.pop(0)))
 
         patch_urlopen.start()
         self.collector.collect()
@@ -208,8 +212,9 @@ class TestMesosCollector(CollectorTestCase):
                     StringIO(json.dumps(self.get_state(0, 22, 1))),
                     self.getFixture('slave_perf_3')]
 
-        patch_urlopen = patch('urllib2.urlopen',
-                              Mock(side_effect=lambda *args: fixtures.pop(0)))
+        patch_urlopen = patch(
+            'urllib2.urlopen',
+            Mock(side_effect=lambda *args, **kwargs: fixtures.pop(0)))
 
         patch_communicate = patch(
             'subprocess.Popen.communicate',
@@ -242,8 +247,9 @@ class TestMesosCollector(CollectorTestCase):
                     StringIO(json.dumps(self.get_state(0, 24, 0))),
                     self.getFixture('slave_perf_4')]
 
-        patch_urlopen = patch('urllib2.urlopen',
-                              Mock(side_effect=lambda *args: fixtures.pop(0)))
+        patch_urlopen = patch(
+            'urllib2.urlopen',
+            Mock(side_effect=lambda *args, **kwargs: fixtures.pop(0)))
 
         patch_urlopen.start()
         self.collector.collect()

@@ -182,6 +182,7 @@ class MesosCollector(diamond.collector.Collector):
         self.cluster_identifiers = ci
 
         self.source_prefix = self.config.get('source_prefix')
+        self.http_timeout = int(self.config.get('http_timeout'))
 
     def get_default_config_help(self):
         config_help = super(MesosCollector, self).get_default_config_help()
@@ -211,8 +212,9 @@ class MesosCollector(diamond.collector.Collector):
             'byte_unit': ['mb'],
             'subprocess_timeout': 15,
             'executor_names': ['kafka.broker', 'aurora.task'],
-            'source_prefix': ''
-            })
+            'source_prefix': '',
+            'http_timeout': 30
+        })
         return config
 
     def _format_identifier(self, identifier):
@@ -247,7 +249,7 @@ class MesosCollector(diamond.collector.Collector):
         self.log.debug('Requesting Mesos data from: %s' % url)
         req = urllib2.Request(url, headers=headers)
 
-        handle = urllib2.urlopen(req)
+        handle = urllib2.urlopen(req, timeout=self.http_timeout)
         return json.loads(handle.read())
 
     def _publish_metrics(self, raw_name, raw_value, is_master):

@@ -42,8 +42,9 @@ class TestAuroraCollector(CollectorTestCase):
             self.getFixture('cluster_vars'),
             self.getFixture('job_summary')
         ]
-        patch_urlopen = patch('urllib2.OpenerDirector.open',
-                              Mock(side_effect=lambda *args: fixtures.pop(0)))
+        patch_urlopen = patch(
+            'urllib2.OpenerDirector.open',
+            Mock(side_effect=lambda *args, **kwargs: fixtures.pop(0)))
 
         patch_urlopen.start()
         self.collector.collect()
@@ -101,8 +102,9 @@ class TestAuroraCollector(CollectorTestCase):
             StringIO(json.dumps(metrics)),
             self.getFixture('job_summary')
         ]
-        patch_urlopen = patch('urllib2.OpenerDirector.open',
-                              Mock(side_effect=lambda *args: fixtures.pop(0)))
+        patch_urlopen = patch(
+            'urllib2.OpenerDirector.open',
+            Mock(side_effect=lambda *args, **kwargs: fixtures.pop(0)))
 
         config = get_collector_config('AuroraCollector', {
             'hosts': 'test@localhost:8081',
